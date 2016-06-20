@@ -2124,6 +2124,7 @@ class Catch extends TreeNode {
   accept(TreeVisitor v) => v.visitCatch(this);
 
   visitChildren(Visitor v) {
+    guard?.accept(v);
     exception?.accept(v);
     stackTrace?.accept(v);
     body?.accept(v);
