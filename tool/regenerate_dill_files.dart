@@ -18,10 +18,15 @@ Usage: regenerate_dill_files --sdk <path to SDK checkout>
 Recompiles all the .dill files that are under version control.
 """;
 
-void compile({String dartFile, String packageRoot, String output}) {
-  print('Compiling $dartFile');
+void compile(
+    {String dartFile,
+    String packageRoot,
+    String output,
+    bool strongMode: false}) {
+  String strongMessage = strongMode ? '(strong mode)' : '';
+  print('Compiling $dartFile $strongMessage');
   var repo = new Repository(sdk: cmd.currentSdk(), packageRoot: packageRoot);
-  var program = loadProgramFromDart(dartFile, repo);
+  var program = loadProgramFromDart(dartFile, repo, strongMode: strongMode);
   new VmTarget().transformProgram(program);
   writeProgramToBinary(program, output);
 }
@@ -64,10 +69,16 @@ main(List<String> args) async {
 
   // Compile files in test/data
   String packageRoot = getNewestBuildDir(sdk) + '/packages';
+  String dart2js = '$sdk/pkg/compiler/lib/src/dart2js.dart';
   compile(
-      dartFile: '$sdk/pkg/compiler/lib/src/dart2js.dart',
+      dartFile: dart2js,
       packageRoot: packageRoot,
       output: 'test/data/dart2js.dill');
+  compile(
+      strongMode: true,
+      dartFile: dart2js,
+      packageRoot: packageRoot,
+      output: 'test/data/dart2js-strong.dill');
   compile(dartFile: 'test/data/boms.dart', output: 'test/data/boms.dill');
 
   // Compile type propagation test cases.
