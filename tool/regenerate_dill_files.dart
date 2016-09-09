@@ -8,6 +8,7 @@ import 'package:path/path.dart' as path;
 import 'package:kernel/kernel.dart';
 import 'package:kernel/target/vm.dart';
 import '../bin/dartk.dart' as cmd;
+import 'package:kernel/target/targets.dart';
 
 ArgParser parser = new ArgParser()
   ..addOption('sdk', help: 'Path to the SDK checkout');
@@ -27,7 +28,8 @@ void compile(
   print('Compiling $dartFile $strongMessage');
   var repo = new Repository(sdk: cmd.currentSdk(), packageRoot: packageRoot);
   var program = loadProgramFromDart(dartFile, repo, strongMode: strongMode);
-  new VmTarget().transformProgram(program);
+  new VmTarget(new TargetFlags(strongMode: strongMode))
+      .transformProgram(program);
   writeProgramToBinary(program, output);
 }
 
