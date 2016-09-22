@@ -8,6 +8,8 @@ import 'package:path/path.dart' as path;
 import 'package:kernel/kernel.dart';
 import 'package:kernel/target/vm.dart';
 import 'package:kernel/target/targets.dart';
+import 'package:package_config/discovery.dart';
+import 'package:package_config/packages.dart';
 
 ArgParser parser = new ArgParser()
   ..addOption('sdk', help: 'Path to the SDK checkout');
@@ -30,7 +32,9 @@ void compile(
     exit(1);
   }
   print('Compiling $dartFile $strongMessage');
-  var repo = new Repository(sdk: sdk, packageRoot: packageRoot);
+  Packages packages =
+      getPackagesDirectory(new Uri(scheme: 'file', path: packageRoot));
+  var repo = new Repository(sdk: sdk, packages: packages);
   var program = loadProgramFromDart(dartFile, repo, strongMode: strongMode);
   new VmTarget(new TargetFlags(strongMode: strongMode))
       .transformProgram(program);
@@ -88,6 +92,8 @@ main(List<String> args) async {
       dartFile: dart2js,
       packageRoot: packageRoot,
       output: 'test/data/dart2js-strong.dill');
-  compile(sdk: sdkRoot,
-      dartFile: 'test/data/boms.dart', output: 'test/data/boms.dill');
+  compile(
+      sdk: sdkRoot,
+      dartFile: 'test/data/boms.dart',
+      output: 'test/data/boms.dill');
 }
