@@ -6,8 +6,6 @@ import 'dart:io';
 import 'package:args/args.dart';
 import 'package:path/path.dart' as path;
 import 'package:kernel/kernel.dart';
-import 'package:kernel/target/vm.dart';
-import 'package:kernel/target/targets.dart';
 import 'package:package_config/discovery.dart';
 import 'package:package_config/packages.dart';
 
@@ -36,8 +34,6 @@ void compile(
       getPackagesDirectory(new Uri(scheme: 'file', path: packageRoot));
   var repo = new Repository(sdk: sdk, packages: packages);
   var program = loadProgramFromDart(dartFile, repo, strongMode: strongMode);
-  new VmTarget(new TargetFlags(strongMode: strongMode))
-      .transformProgram(program);
   writeProgramToBinary(program, output);
 }
 
