@@ -6,8 +6,8 @@ import 'dart:io';
 import 'package:args/args.dart';
 import 'package:path/path.dart' as path;
 import 'package:kernel/kernel.dart';
-import 'package:package_config/discovery.dart';
-import 'package:package_config/packages.dart';
+import 'package:kernel/analyzer/loader.dart';
+import 'dart:async';
 
 ArgParser parser = new ArgParser()
   ..addOption('sdk', help: 'Path to the SDK checkout');
@@ -18,22 +18,25 @@ Usage: regenerate_dill_files --sdk <path to SDK checkout>
 Recompiles all the .dill files that are under version control.
 """;
 
-void compile(
-    {String dartFile,
+DartLoaderBatch batch = new DartLoaderBatch();
+
+Future compile({String dartFile,
     String sdk,
     String packageRoot,
     String output,
-    bool strongMode: false}) {
+    bool strongMode: false}) async {
+  var settings = new DartOptions(strongMode: strongMode,
+      sdk: sdk,
+      packagePath: packageRoot);
   String strongMessage = strongMode ? '(strong mode)' : '';
-  if (!new Directory(sdk).existsSync()) {
-    print('SDK not found: $sdk');
+  if (!new Directory(settings.sdk).existsSync()) {
+    print('SDK not found: ${settings.sdk}');
     exit(1);
   }
   print('Compiling $dartFile $strongMessage');
-  Packages packages =
-      getPackagesDirectory(new Uri(scheme: 'file', path: packageRoot));
-  var repo = new Repository(sdk: sdk, packages: packages);
-  var program = loadProgramFromDart(dartFile, repo, strongMode: strongMode);
+  var repo = new Repository();
+  var loader = await batch.getLoader(repo, settings);
+  var program = loader.loadProgram(dartFile);
   writeProgramToBinary(program, output);
 }
 
@@ -77,18 +80,18 @@ main(List<String> args) async {
   String sdkRoot = getNewestBuildDir(sdk) + '/obj/gen/patched_sdk';
   String packageRoot = getNewestBuildDir(sdk) + '/packages';
   String dart2js = '$sdk/pkg/compiler/lib/src/dart2js.dart';
-  compile(
+  await compile(
       sdk: sdkRoot,
       dartFile: dart2js,
       packageRoot: packageRoot,
       output: 'test/data/dart2js.dill');
-  compile(
+  await compile(
       sdk: sdkRoot,
       strongMode: true,
       dartFile: dart2js,
       packageRoot: packageRoot,
       output: 'test/data/dart2js-strong.dill');
-  compile(
+  await compile(
       sdk: sdkRoot,
       dartFile: 'test/data/boms.dart',
       output: 'test/data/boms.dill');
