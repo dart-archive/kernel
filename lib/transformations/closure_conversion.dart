@@ -74,7 +74,6 @@ class NoContext extends Context {
         new LocalContext(converter, this)..extend(variable, value);
   }
 
-
   Expression lookup(VariableDeclaration variable) {
     throw 'Unbound NoContext.lookup($variable)';
   }
@@ -89,14 +88,13 @@ class NoContext extends Context {
   }
 }
 
-
 class LocalContext extends Context {
   final ClosureConverter converter;
   final Context parent;
   final VariableDeclaration self;
   final IntLiteral size;
   final List<VariableDeclaration> variables = <VariableDeclaration>[];
-  
+
   LocalContext._internal(this.converter, this.parent, this.self, this.size);
 
   factory LocalContext(ClosureConverter converter, Context parent) {
@@ -113,7 +111,7 @@ class LocalContext extends Context {
         new PropertySet(new VariableGet(declaration),
                         new Name('parent'),
                         parent.expression)));
-      
+
     return new LocalContext._internal(converter, parent, declaration, zero);
   }
 
@@ -267,7 +265,7 @@ class ClosureConverter extends Transformer {
     if (body is Block) {
       _currentBlock = body;
     } else {
-      _currentBlock = new Block(<Statements>[body]);
+      _currentBlock = new Block(<Statement>[body]);
       node.function.body = body.parent = _currentBlock;
     }
     _insertionIndex = 0;
@@ -303,7 +301,7 @@ class ClosureConverter extends Transformer {
     if (body is Block) {
       _currentBlock = body;
     } else {
-      _currentBlock = new Block(<Statements>[body]);
+      _currentBlock = new Block(<Statement>[body]);
       node.function.body = body.parent = _currentBlock;
     }
     _insertionIndex = 0;
@@ -339,11 +337,11 @@ class ClosureConverter extends Transformer {
     if (body is Block) {
       _currentBlock = body;
     } else {
-      _currentBlock = new Block(<Statements>[body]);
+      _currentBlock = new Block(<Statement>[body]);
       node.function.body = body.parent = _currentBlock;
     }
     _insertionIndex = 0;
-    
+
     // Start with no context.  This happens after setting up _currentBlock
     // so statements can be emitted into _currentBlock if necessary.
     context = new NoContext(this);
@@ -372,7 +370,7 @@ class ClosureConverter extends Transformer {
     // need to be closure converted?
     node.positionalParameters.where(captured.contains).forEach(extend);
     node.namedParameters.where(captured.contains).forEach(extend);
-    
+
     assert(node.body != null);
     node.body = node.body.accept(this);
     node.body.parent = node;

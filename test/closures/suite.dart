@@ -46,6 +46,9 @@ import 'package:testing/src/compilation_runner.dart' show
 import 'package:kernel/ast.dart' show
     Program;
 
+import 'package:kernel/transformations/closure_conversion.dart' as
+    closure_conversion;
+
 class TestContext extends SuiteContext {
   final String sdk;
 
@@ -57,6 +60,8 @@ class TestContext extends SuiteContext {
 
   final List<Step> steps = const <Step>[
       const Kernel(),
+      const Print(),
+      const ClosureConversion(),
       const Print(),
   ];
 
@@ -91,9 +96,9 @@ class Kernel extends Step<TestDescription, Program, TestContext> {
           getTarget("vm", new TargetFlags(strongMode: testContext.strongMode));
       Program program =
           loader.loadProgram(description.file.path, target: target);
-      return new Result.pass(program);
+      return new Result<Program>.pass(program);
     } catch (e, s) {
-      return new Result.crash(e, s);
+      return new Result<Program>.crash(e, s);
     }
   }
 }
@@ -109,5 +114,20 @@ class Print extends Step<Program, Program, TestContext> {
     printer.writeLibraryFile(program.mainMethod.enclosingLibrary);
     print("$sb");
     return new Result<Program>.pass(program);
+  }
+}
+
+class ClosureConversion extends Step<Program, Program, TestContext> {
+  const ClosureConversion();
+
+  String get name => "closure conversion";
+
+  Future<Result<Program>> run(Program program, TestContext testContext) async {
+    try {
+      return new Result<Program>.pass(
+          closure_conversion.transformProgram(program));
+    } catch (e, s) {
+      return new Result<Program>.crash(e, s);
+    }
   }
 }
