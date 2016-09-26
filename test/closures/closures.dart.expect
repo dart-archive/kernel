@@ -1,0 +1,18 @@
+library;
+import self as self;
+import "dart:core" as core;
+import "dart:_internal" as _in;
+
+static field dynamic f;
+static method foo() → dynamic {
+  core::print(self::f.call(0));
+}
+static method main(dynamic arguments) → dynamic {
+  final _in::Context #t1 = new _in::Context::•(1);
+  #t1.parent = null;
+  #t1.[]=(0, arguments);
+  self::f = (final _in::Context #t2, dynamic x) → dynamic {
+    return #t2.[](0).[](x);
+  };
+  self::foo();
+}
