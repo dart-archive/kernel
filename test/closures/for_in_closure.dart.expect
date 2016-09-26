@@ -1,0 +1,16 @@
+library;
+import self as self;
+import "dart:core" as core;
+import "dart:_internal" as _in;
+
+static method main(core::List<dynamic> arguments) → dynamic {
+  dynamic closures = <dynamic>[];
+  final _in::Context #t1 = new _in::Context::•(1);
+  #t1.parent = null;
+  #t1.[]=(0, null);
+  for(dynamic #t2 = invalid-expression in arguments) {
+    closures.add((final _in::Context #t3) → dynamic {
+      return #t3.[](0);
+    });
+  }
+}

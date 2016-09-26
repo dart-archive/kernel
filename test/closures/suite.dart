@@ -7,8 +7,14 @@ library test.kernel.closures.suite;
 import 'dart:async' show
     Future;
 
+import 'dart:convert' show
+    UTF8;
+
 import 'dart:io' show
-    Platform;
+    File,
+    IOSink,
+    Platform,
+    Process;
 
 import 'package:analyzer/src/generated/engine.dart' show
     AnalysisContext;
@@ -44,10 +50,14 @@ import 'package:testing/src/compilation_runner.dart' show
     SuiteContext;
 
 import 'package:kernel/ast.dart' show
+    Library,
     Program;
 
 import 'package:kernel/transformations/closure_conversion.dart' as
     closure_conversion;
+
+const bool generateExpectations =
+    const bool.fromEnvironment("generateExpectations");
 
 class TestContext extends SuiteContext {
   final String sdk;
@@ -63,6 +73,7 @@ class TestContext extends SuiteContext {
       const Print(),
       const ClosureConversion(),
       const Print(),
+      const MatchExpectation<TestContext>(".expect"),
   ];
 
   TestContext(this.sdk, this.packageRoot, this.strongMode, this.dartSdk);
@@ -130,4 +141,65 @@ class ClosureConversion extends Step<Program, Program, TestContext> {
       return new Result<Program>.crash(e, s);
     }
   }
+}
+
+class MatchExpectation<C extends SuiteContext> extends Step<Program, Null, C> {
+  final String suffix;
+
+  const MatchExpectation(this.suffix);
+
+  String get name => "match expectations";
+
+  Future<Result<Null>> run(Program program, C context) async {
+    Library library = program.mainMethod.parent;
+    Uri uri = library.importUri;
+    StringBuffer buffer = new StringBuffer();
+    new Printer(buffer).writeLibraryFile(library);
+
+    File expectedFile = new File("${uri.toFilePath()}$suffix");
+    if (await expectedFile.exists()) {
+      String expected = await expectedFile.readAsString();
+      if (expected.trim() != "$buffer".trim()) {
+        String diff = await runDiff(expectedFile.uri, "$buffer");
+        return new Result<Null>.fail(
+            null, "$uri doesn't match ${expectedFile.uri}\n$diff");
+      }
+    } else if (generateExpectations) {
+      await openWrite(expectedFile.uri, (IOSink sink) {
+          sink.writeln("$buffer".trim());
+        });
+      return new Result<Null>.fail(null, "Generated ${expectedFile.uri}");
+    } else {
+      return new Result<Null>.fail(null, """
+Please create file ${expectedFile.path} with this content:
+$buffer""");
+    }
+    return new Result<Null>.pass(null);
+  }
+}
+
+Future<String> runDiff(Uri expected, String actual) async {
+  Process diff = await Process.start(
+      "diff", <String>["-u", expected.toFilePath(), "-"]);
+  diff.stdin.write(actual);
+  Future closeFuture = diff.stdin.close();
+  Future<List<String>> stdoutFuture =
+      diff.stdout.transform(UTF8.decoder).toList();
+  Future<List<String>> stderrFuture =
+      diff.stderr.transform(UTF8.decoder).toList();
+  StringBuffer sb = new StringBuffer();
+  sb.writeAll(await stdoutFuture);
+  sb.writeAll(await stderrFuture);
+  await closeFuture;
+  return "$sb";
+}
+
+Future openWrite(Uri uri, f(IOSink sink)) async {
+  IOSink sink = new File.fromUri(uri).openWrite();
+  try {
+    await f(sink);
+  } finally {
+    await sink.close();
+  }
+  print("Wrote $uri");
 }
