@@ -3,14 +3,26 @@ import self as self;
 import "dart:core" as core;
 import "dart:_internal" as _in;
 
+class Closure#0 extends core::Object implements core::Function {
+  field _in::Context context;
+  constructor •(final _in::Context #t1) → dynamic
+    : self::Closure#0::context = #t1
+    ;
+  method call() → dynamic {
+    final _in::Context #t2 = |{
+                                "This is a temporary solution. In the VM, this will become an additional parameter.";
+
+                                => this.{self::Closure#0::context}
+                             }| ;
+    return #t2.[](0);
+  }
+}
 static method main(core::List<dynamic> arguments) → dynamic {
   dynamic closures = <dynamic>[];
-  final _in::Context #t1 = new _in::Context::•(1);
-  #t1.parent = null;
-  #t1.[]=(0, null);
-  for(dynamic #t2 = invalid-expression in arguments) {
-    closures.add((final _in::Context #t3) → dynamic {
-      return #t3.[](0);
-    });
+  final _in::Context #t3 = new _in::Context::•(1);
+  #t3.parent = null;
+  #t3.[]=(0, null);
+  for(dynamic #t4 = invalid-expression in arguments) {
+    closures.add(new self::Closure#0::•(invalid-expression));
   }
 }

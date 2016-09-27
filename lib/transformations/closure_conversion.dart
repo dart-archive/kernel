@@ -233,6 +233,8 @@ class ClosureConverter extends Transformer {
   final CoreTypes coreTypes;
   final Set<VariableDeclaration> captured;
 
+  Library currentLibrary;
+  int closureCount = 0;
   Block _currentBlock;
   int _insertionIndex = 0;
 
@@ -243,6 +245,11 @@ class ClosureConverter extends Transformer {
   void insert(Statement statement) {
     _currentBlock.statements.insert(_insertionIndex++, statement);
     statement.parent = _currentBlock;
+  }
+
+  TreeNode visitLibrary(Library node) {
+    currentLibrary = node;
+    return super.visitLibrary(node);
   }
 
   TreeNode visitConstructor(Constructor node) {
@@ -307,22 +314,87 @@ class ClosureConverter extends Transformer {
     _insertionIndex = 0;
 
     // TODO: This is really the closure, not the context.
-    VariableDeclaration parameter =
+    VariableDeclaration contextVariable =
         new VariableDeclaration(null,
             type: new InterfaceType(coreTypes.internalContextClass),
             isFinal: true);
-    node.function.positionalParameters.insert(0, parameter);
-    parameter.parent = node.function;
-    ++node.function.requiredParameterCount;
-    context = context.toClosureContext(parameter);
+    context = context.toClosureContext(contextVariable);
 
     node.transformChildren(this);
+
+    Expression expression = addClosure(node.function, contextVariable);
 
     _currentBlock = savedBlock;
     _insertionIndex = savedIndex;
     context = savedContext;
 
-    return node;
+    return expression;
+  }
+
+  /// Add a new class to the current library that looks like this:
+  ///
+  ///     class Closure 0 extends core::Object implements core::Function {
+  ///       field _in::Context context;
+  ///       constructor •(final _in::Context #t1) → dynamic
+  ///         : self::Closure 0::context = #t1
+  ///         ;
+  ///       method call(/* The parameters of [function] */) → dynamic {
+  ///         /// #t2 is [contextVariable].
+  ///         final _in::Context #t2 = this.{self::Closure 0::context};
+  ///         /* The body of [function]. */
+  ///       }
+  ///     }
+  ///
+  /// Returns a constructor call to invoke the above constructor.
+  ///
+  /// TODO(ahe): We shouldn't create a class for each closure. Instead we turn
+  /// [function] into a top-level function and use the Dart VM's mechnism for
+  /// closures.
+  Expression addClosure(
+      FunctionNode function,
+      VariableDeclaration contextVariable) {
+    Class closureClass = new Class(
+        name: 'Closure#${closureCount++}',
+        supertype: coreTypes.objectClass.rawType,
+        implementedTypes: <InterfaceType>[coreTypes.functionClass.rawType]);
+    Field contextField = new Field(new Name("context"),
+        type: coreTypes.internalContextClass.rawType);
+    closureClass.addMember(contextField);
+    VariableDeclaration contextParameter =
+        new VariableDeclaration(null,
+            type: coreTypes.internalContextClass.rawType,
+            isFinal: true);
+    Constructor constructor = new Constructor(
+        new FunctionNode(new EmptyStatement(),
+            positionalParameters: <VariableDeclaration>[contextParameter]),
+        name: new Name(""),
+        initializers: <Initializer>[
+            new FieldInitializer(
+                contextField, new VariableGet(contextParameter))]);
+    closureClass.addMember(constructor);
+    closureClass.addMember(
+        new Procedure(new Name("call"), ProcedureKind.Method, function));
+    currentLibrary.addClass(closureClass);
+    List<Statement> statements = <Statement>[contextVariable];
+    Statement body = function.body;
+    if (body is Block) {
+      statements.addAll(body.statements);
+    } else {
+      statements.add(body);
+    }
+    function.body = new Block(statements);
+    function.body.parent = function;
+    contextVariable.initializer = new BlockExpression(
+        new Block(<Statement>[new ExpressionStatement(new StringLiteral(
+            "This is a temporary solution. "
+            "In the VM, this will become an additional parameter."))]),
+        new PropertyGet(new ThisExpression(), contextField.name, contextField));
+
+    contextVariable.initializer.parent = contextVariable;
+    return new ConstructorInvocation(
+        constructor, new Arguments(<Expression>[
+            // TODO(ahe): Get a reference to context.
+            new InvalidExpression()]));
   }
 
   TreeNode visitProcedure(Procedure node) {
