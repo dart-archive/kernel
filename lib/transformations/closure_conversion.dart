@@ -247,6 +247,19 @@ class ClosureConverter extends Transformer {
     statement.parent = _currentBlock;
   }
 
+  TreeNode saveContext(TreeNode f()) {
+    Block savedBlock = _currentBlock;
+    int savedIndex = _insertionIndex;
+    Context savedContext = context;
+    try {
+      return f();
+    } finally {
+      _currentBlock = savedBlock;
+      _insertionIndex = savedIndex;
+      context = savedContext;
+    }
+  }
+
   TreeNode visitLibrary(Library node) {
     currentLibrary = node;
     return super.visitLibrary(node);
@@ -261,47 +274,36 @@ class ClosureConverter extends Transformer {
       context.extend(node.variable,
                      new FunctionExpression(node.function));
     }
+    return saveContext(() {
+      Statement body = node.function.body;
+      assert(body != null);
 
-    Block savedBlock = _currentBlock;
-    int savedIndex = _insertionIndex;
-    Context savedContext = context;
+      if (body is Block) {
+        _currentBlock = body;
+      } else {
+        _currentBlock = new Block(<Statement>[body]);
+        node.function.body = body.parent = _currentBlock;
+      }
+      _insertionIndex = 0;
 
-    Statement body = node.function.body;
-    assert(body != null);
+      // TODO: This is really the closure, not the context.
+      VariableDeclaration parameter =
+          new VariableDeclaration(null,
+              type: new InterfaceType(coreTypes.internalContextClass),
+              isFinal: true);
+      node.function.positionalParameters.insert(0, parameter);
+      parameter.parent = node.function;
+      ++node.function.requiredParameterCount;
+      context = context.toClosureContext(parameter);
 
-    if (body is Block) {
-      _currentBlock = body;
-    } else {
-      _currentBlock = new Block(<Statement>[body]);
-      node.function.body = body.parent = _currentBlock;
-    }
-    _insertionIndex = 0;
+      // Don't visit the children, because that included a variable declaration.
+      node.function = node.function.accept(this);
 
-    // TODO: This is really the closure, not the context.
-    VariableDeclaration parameter =
-        new VariableDeclaration(null,
-            type: new InterfaceType(coreTypes.internalContextClass),
-            isFinal: true);
-    node.function.positionalParameters.insert(0, parameter);
-    parameter.parent = node.function;
-    ++node.function.requiredParameterCount;
-    context = context.toClosureContext(parameter);
-
-    // Don't visit the children, because that included a variable declaration.
-    node.function = node.function.accept(this);
-
-    _currentBlock = savedBlock;
-    _insertionIndex = savedIndex;
-    context = savedContext;
-
-    return captured.contains(node.variable) ? null : node;
+      return captured.contains(node.variable) ? null : node;
+    });
   }
 
-  TreeNode visitFunctionExpression(FunctionExpression node) {
-    Block savedBlock = _currentBlock;
-    int savedIndex = _insertionIndex;
-    Context savedContext = context;
-
+  TreeNode visitFunctionExpression(FunctionExpression node) => saveContext(() {
     Statement body = node.function.body;
     assert(body != null);
 
@@ -318,19 +320,16 @@ class ClosureConverter extends Transformer {
         new VariableDeclaration(null,
             type: new InterfaceType(coreTypes.internalContextClass),
             isFinal: true);
+    Context parent = context;
     context = context.toClosureContext(contextVariable);
 
     node.transformChildren(this);
 
     Expression expression =
-        addClosure(node.function, contextVariable, savedContext.expression);
-
-    _currentBlock = savedBlock;
-    _insertionIndex = savedIndex;
-    context = savedContext;
+        addClosure(node.function, contextVariable, parent.expression);
 
     return expression;
-  }
+  });
 
   /// Add a new class to the current library that looks like this:
   ///
@@ -449,12 +448,8 @@ class ClosureConverter extends Transformer {
     return node;
   }
 
-  TreeNode visitBlock(Block node) {
-    Block savedBlock;
-    int savedIndex;
+  TreeNode visitBlock(Block node) => saveContext(() {
     if (_currentBlock != node) {
-      savedBlock = _currentBlock;
-      savedIndex = _insertionIndex;
       _currentBlock = node;
       _insertionIndex = 0;
     }
@@ -473,12 +468,8 @@ class ClosureConverter extends Transformer {
       }
     }
 
-    if (savedBlock != null) {
-      _currentBlock = savedBlock;
-      _insertionIndex = savedIndex;
-    }
     return node;
-  }
+  });
 
   TreeNode visitVariableDeclaration(VariableDeclaration node) {
     node.transformChildren(this);
