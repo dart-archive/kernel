@@ -23,6 +23,6 @@ static method main(core::List<dynamic> arguments) → dynamic {
   #t3.parent = null;
   #t3.[]=(0, null);
   for(dynamic #t4 = invalid-expression in arguments) {
-    closures.add(new self::Closure#0::•(invalid-expression));
+    closures.add(new self::Closure#0::•(#t3));
   }
 }

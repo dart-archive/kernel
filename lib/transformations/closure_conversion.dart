@@ -322,7 +322,8 @@ class ClosureConverter extends Transformer {
 
     node.transformChildren(this);
 
-    Expression expression = addClosure(node.function, contextVariable);
+    Expression expression =
+        addClosure(node.function, contextVariable, savedContext.expression);
 
     _currentBlock = savedBlock;
     _insertionIndex = savedIndex;
@@ -333,14 +334,14 @@ class ClosureConverter extends Transformer {
 
   /// Add a new class to the current library that looks like this:
   ///
-  ///     class Closure 0 extends core::Object implements core::Function {
+  ///     class Closure#0 extends core::Object implements core::Function {
   ///       field _in::Context context;
   ///       constructor •(final _in::Context #t1) → dynamic
   ///         : self::Closure 0::context = #t1
   ///         ;
   ///       method call(/* The parameters of [function] */) → dynamic {
   ///         /// #t2 is [contextVariable].
-  ///         final _in::Context #t2 = this.{self::Closure 0::context};
+  ///         final _in::Context #t2 = this.{self::Closure#0::context};
   ///         /* The body of [function]. */
   ///       }
   ///     }
@@ -352,7 +353,8 @@ class ClosureConverter extends Transformer {
   /// closures.
   Expression addClosure(
       FunctionNode function,
-      VariableDeclaration contextVariable) {
+      VariableDeclaration contextVariable,
+      Expression accessContext) {
     Class closureClass = new Class(
         name: 'Closure#${closureCount++}',
         supertype: coreTypes.objectClass.rawType,
@@ -392,9 +394,7 @@ class ClosureConverter extends Transformer {
 
     contextVariable.initializer.parent = contextVariable;
     return new ConstructorInvocation(
-        constructor, new Arguments(<Expression>[
-            // TODO(ahe): Get a reference to context.
-            new InvalidExpression()]));
+        constructor, new Arguments(<Expression>[accessContext]));
   }
 
   TreeNode visitProcedure(Procedure node) {
