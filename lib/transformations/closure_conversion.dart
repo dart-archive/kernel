@@ -261,6 +261,12 @@ class ClosureConverter extends Transformer {
   }
 
   TreeNode visitLibrary(Library node) {
+    if (node.importUri.scheme == "dart" ||
+        node.importUri.path.contains("/reify/lib/runtime/")) {
+      // TODO(ahe): Remove this, it means that we don't transform platform
+      // libraries.
+      return node;
+    }
     currentLibrary = node;
     return super.visitLibrary(node);
   }
@@ -344,9 +350,9 @@ class ClosureConverter extends Transformer {
         supertype: coreTypes.objectClass.rawType,
         implementedTypes: <InterfaceType>[coreTypes.functionClass.rawType]);
     closureClass.addMember(
-        new Field(new Name("note"), type: coreTypes.stringClass.rawType)
-        ..initializer = new StringLiteral(
-            "This is temporary. The VM doesn't need closure classes."));
+        new Field(new Name("note"), type: coreTypes.stringClass.rawType,
+            initializer: new StringLiteral(
+                "This is temporary. The VM doesn't need closure classes.")));
     Field contextField = new Field(new Name("context"),
         type: coreTypes.internalContextClass.rawType);
     closureClass.addMember(contextField);

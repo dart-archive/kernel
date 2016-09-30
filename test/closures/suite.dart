@@ -53,6 +53,9 @@ import 'package:kernel/ast.dart' show
     Library,
     Program;
 
+import 'package:kernel/checks.dart' show
+    CheckParentPointers;
+
 import 'package:kernel/transformations/closure_conversion.dart' as
     closure_conversion;
 
@@ -107,6 +110,8 @@ class Kernel extends Step<TestDescription, Program, TestContext> {
           getTarget("vm", new TargetFlags(strongMode: testContext.strongMode));
       Program program =
           loader.loadProgram(description.file.path, target: target);
+      // TODO(ahe): Use `runSanityChecks` when merging with master.
+      CheckParentPointers.check(program);
       return new Result<Program>.pass(program);
     } catch (e, s) {
       return new Result<Program>.crash(e, s);
@@ -135,8 +140,9 @@ class ClosureConversion extends Step<Program, Program, TestContext> {
 
   Future<Result<Program>> run(Program program, TestContext testContext) async {
     try {
-      return new Result<Program>.pass(
-          closure_conversion.transformProgram(program));
+      program = closure_conversion.transformProgram(program);
+      CheckParentPointers.check(program);
+      return new Result<Program>.pass(program);
     } catch (e, s) {
       return new Result<Program>.crash(e, s);
     }
