@@ -7,13 +7,97 @@ library kernel.transformations.closure_conversion;
 import '../ast.dart';
 import '../core_types.dart';
 import '../visitor.dart';
+import '../frontend/accessors.dart';
+
+/// Extend the program with this mock:
+///
+///     class Context {
+///       final List list;
+///       var parent;
+///       Context(int i) : list = new List(i);
+///       operator[] (int i) => list[i];
+///       operator[]= (int i, value) {
+///         list[i] = value;
+///       }
+///     }
+CoreTypes mockUpContext(Program program) {
+  CoreTypes coreTypes = new CoreTypes(program);
+
+  ///     final List list;
+  Field listField = new Field(
+      new Name("list"), type: coreTypes.listClass.rawType, isFinal: true);
+
+  ///     var parent;
+  Field parentField = new Field(new Name("parent"));
+
+  List<Field> fields = <Field>[listField, parentField];
+
+  ///     Context(int i) : list = new List(i);
+  VariableDeclaration iParameter = new VariableDeclaration(
+      "i", type: coreTypes.intClass.rawType, isFinal: true);
+  Constructor constructor = new Constructor(
+      new FunctionNode(new EmptyStatement(),
+          positionalParameters: <VariableDeclaration>[iParameter]),
+      name: new Name(""),
+      initializers: <Initializer>[
+            new FieldInitializer(
+                listField, new StaticInvocation(
+                    coreTypes.listClass.procedures.first,
+                    new Arguments(
+                        <Expression>[
+                            new VariableAccessor(iParameter)
+                                .buildSimpleRead()])))]);
+
+  ///     operator[] (int i) => list[i];
+  iParameter = new VariableDeclaration(
+      "i", type: coreTypes.intClass.rawType, isFinal: true);
+  Accessor accessor = IndexAccessor.make(
+      new ThisPropertyAccessor(
+          listField.name, listField, listField).buildSimpleRead(),
+      new VariableAccessor(iParameter).buildSimpleRead(),
+      null, null);
+  Procedure indexGet = new Procedure(new Name("[]"), ProcedureKind.Operator,
+      new FunctionNode(new ReturnStatement(accessor.buildSimpleRead()),
+          positionalParameters: <VariableDeclaration>[iParameter]));
+
+  ///     operator[]= (int i, value) {
+  ///       list[i] = value;
+  ///     }
+  iParameter = new VariableDeclaration(
+      "i", type: coreTypes.intClass.rawType, isFinal: true);
+  VariableDeclaration valueParameter = new VariableDeclaration(
+      "value", isFinal: true);
+  accessor = IndexAccessor.make(
+      new ThisPropertyAccessor(
+          listField.name, listField, listField).buildSimpleRead(),
+      new VariableAccessor(iParameter).buildSimpleRead(), null, null);
+  Expression expression = accessor.buildAssignment(
+      new VariableAccessor(valueParameter).buildSimpleRead(),
+      voidContext: true);
+  Procedure indexSet = new Procedure(new Name("[]="), ProcedureKind.Operator,
+      new FunctionNode(new ExpressionStatement(expression),
+          positionalParameters: <VariableDeclaration>[
+              iParameter, valueParameter]));
+
+  List<Procedure> procedures = <Procedure>[indexGet, indexSet];
+
+  Class contextClass = new Class(name: "Context",
+      supertype: coreTypes.objectClass.rawType, constructors: [constructor],
+      fields: fields, procedures: procedures);
+  Library mock = new Library(
+      Uri.parse("dart:mock"), name: "mock", classes: [contextClass]);
+  program.libraries.add(mock);
+  mock.parent = program;
+  coreTypes.internalContextClass = contextClass;
+  return coreTypes;
+}
 
 Program transformProgram(Program program) {
   var captured = new CapturedVariables();
   captured.visitProgram(program);
 
   var convert =
-      new ClosureConverter(new CoreTypes(program), captured.variables);
+      new ClosureConverter(mockUpContext(program), captured.variables);
   return convert.visitProgram(program);
 }
 
