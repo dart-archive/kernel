@@ -269,66 +269,51 @@ class ClosureConverter extends Transformer {
     return node;
   }
 
-  TreeNode visitFunctionDeclaration(FunctionDeclaration node) {
-    if (captured.contains(node.variable)) {
-      context.extend(node.variable,
-                     new FunctionExpression(node.function));
-    }
-    return saveContext(() {
-      Statement body = node.function.body;
-      assert(body != null);
-
-      if (body is Block) {
-        _currentBlock = body;
-      } else {
-        _currentBlock = new Block(<Statement>[body]);
-        node.function.body = body.parent = _currentBlock;
-      }
-      _insertionIndex = 0;
-
-      // TODO: This is really the closure, not the context.
-      VariableDeclaration parameter =
-          new VariableDeclaration(null,
-              type: new InterfaceType(coreTypes.internalContextClass),
-              isFinal: true);
-      node.function.positionalParameters.insert(0, parameter);
-      parameter.parent = node.function;
-      ++node.function.requiredParameterCount;
-      context = context.toClosureContext(parameter);
-
-      // Don't visit the children, because that included a variable declaration.
-      node.function = node.function.accept(this);
-
-      return captured.contains(node.variable) ? null : node;
-    });
-  }
-
-  TreeNode visitFunctionExpression(FunctionExpression node) => saveContext(() {
-    Statement body = node.function.body;
+  Expression handleLocalFunction(FunctionNode function) {
+    Statement body = function.body;
     assert(body != null);
 
     if (body is Block) {
       _currentBlock = body;
     } else {
       _currentBlock = new Block(<Statement>[body]);
-      node.function.body = body.parent = _currentBlock;
+      function.body = body.parent = _currentBlock;
     }
     _insertionIndex = 0;
 
-    // TODO: This is really the closure, not the context.
-    VariableDeclaration contextVariable =
-        new VariableDeclaration(null,
-            type: new InterfaceType(coreTypes.internalContextClass),
-            isFinal: true);
+    VariableDeclaration contextVariable = new VariableDeclaration(null,
+        type: coreTypes.internalContextClass.rawType,
+        isFinal: true);
     Context parent = context;
     context = context.toClosureContext(contextVariable);
 
-    node.transformChildren(this);
+    function.transformChildren(this);
 
-    Expression expression =
-        addClosure(node.function, contextVariable, parent.expression);
+    return addClosure(function, contextVariable, parent.expression);
+  }
 
-    return expression;
+  TreeNode visitFunctionDeclaration(FunctionDeclaration node) {
+    if (captured.contains(node.variable)) {
+      context.extend(node.variable,
+                     new FunctionExpression(node.function));
+    }
+    return saveContext(() {
+      Expression expression = handleLocalFunction(node.function);
+
+      if (captured.contains(node.variable)) {
+        // TODO(ahe): I don't understand how this can happen.
+        return null;
+      }
+
+      node.variable.initializer = expression;
+      expression.parent = node.variable;
+
+      return node.variable;
+    });
+  }
+
+  TreeNode visitFunctionExpression(FunctionExpression node) => saveContext(() {
+    return handleLocalFunction(node.function);
   });
 
   /// Add a new class to the current library that looks like this:
@@ -358,6 +343,10 @@ class ClosureConverter extends Transformer {
         name: 'Closure#${closureCount++}',
         supertype: coreTypes.objectClass.rawType,
         implementedTypes: <InterfaceType>[coreTypes.functionClass.rawType]);
+    closureClass.addMember(
+        new Field(new Name("note"), type: coreTypes.stringClass.rawType)
+        ..initializer = new StringLiteral(
+            "This is temporary. The VM doesn't need closure classes."));
     Field contextField = new Field(new Name("context"),
         type: coreTypes.internalContextClass.rawType);
     closureClass.addMember(contextField);

@@ -26,6 +26,7 @@ static method main(dynamic arguments) → dynamic {
   final _in::Context #t3 = new _in::Context::•(1);
   #t3.parent = null;
   #t3.[]=(0, arguments);
-  self::f = new self::Closure#0::•(#t3);
+  final dynamic g = new self::Closure#0::•(#t3);
+  self::f = g;
   self::foo();
 }
