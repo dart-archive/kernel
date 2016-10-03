@@ -11,6 +11,7 @@ import 'dart:convert' show
     UTF8;
 
 import 'dart:io' show
+    Directory,
     File,
     IOSink,
     Platform,
@@ -88,6 +89,27 @@ class TestContext extends SuiteContext {
 
 Future<TestContext> createSuiteContext(Compilation suite) async {
   String sdk = Platform.environment["DART_AOT_SDK"];
+  if (sdk == null) {
+    throw "The environment variable 'DART_AOT_SDK' isn't defined, "
+        "it should point to a patched SDK.";
+  }
+  const String suggestion =
+      "Try checking the value of environment variable 'DART_AOT_SDK', "
+      "it should point to a patched SDK.";
+  if (!await new Directory(sdk).exists()) {
+    throw "Couldn't locate '$sdk'. $suggestion";
+  }
+  Future<bool> fileExists(Uri base, String path) async {
+    return await new File.fromUri(base.resolve(path)).exists();
+  }
+  Uri sdkUri = Uri.base.resolve("$sdk/");
+  if (!await fileExists(sdkUri, "lib/async/async.dart")) {
+    throw "Couldn't find 'lib/async/async.dart' in '$sdk'. $suggestion";
+  }
+  if (await fileExists(sdkUri, "lib/async/async_sources.gypi")) {
+    throw "Found 'lib/async/async_sources.gypi' in '$sdk', "
+        "so it isn't a patched SDK. $suggestion";
+  }
   String packageRoot = Uri.base.resolve("packages").toFilePath();
   bool strongMode = false;
   return new TestContext(
