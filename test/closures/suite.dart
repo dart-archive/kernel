@@ -22,8 +22,10 @@ import 'package:analyzer/src/generated/engine.dart' show
 
 import 'package:kernel/analyzer/loader.dart' show
     AnalyzerLoader,
-    createContext,
     createDartSdk;
+
+import 'package:kernel/analyzer/loader.dart' as loader show
+    createContext;
 
 import 'package:kernel/kernel.dart' show
     Repository;
@@ -40,15 +42,11 @@ import 'package:analyzer/src/generated/sdk.dart' show
     DartSdk;
 
 import 'package:testing/testing.dart' show
-    TestDescription;
-
-import 'package:testing/src/test_root.dart' show
-    Compilation;
-
-import 'package:testing/src/compilation_runner.dart' show
+    Chain,
+    ChainContext,
     Result,
     Step,
-    SuiteContext;
+    TestDescription;
 
 import 'package:kernel/ast.dart' show
     Library,
@@ -66,7 +64,7 @@ import 'package:kernel/binary/ast_to_binary.dart' show
 const bool generateExpectations =
     const bool.fromEnvironment("generateExpectations");
 
-class TestContext extends SuiteContext {
+class TestContext extends ChainContext {
   final String sdk;
 
   final Uri vm;
@@ -90,7 +88,7 @@ class TestContext extends SuiteContext {
       this.dartSdk);
 
   AnalysisContext createAnalysisContext() {
-    return createContext(sdk, packageRoot, strongMode, dartSdk: dartSdk);
+    return loader.createContext(sdk, packageRoot, strongMode, dartSdk: dartSdk);
   }
 }
 
@@ -121,7 +119,7 @@ Future<bool> fileExists(Uri base, String path) async {
   return await new File.fromUri(base.resolve(path)).exists();
 }
 
-Future<TestContext> createSuiteContext(Compilation suite) async {
+Future<TestContext> createContext(Chain suite) async {
   const String suggestion =
       "Try checking the value of environment variable 'DART_AOT_SDK', "
       "it should point to a patched SDK.";
@@ -214,7 +212,7 @@ class ClosureConversion extends Step<Program, Program, TestContext> {
   }
 }
 
-class MatchExpectation<C extends SuiteContext>
+class MatchExpectation<C extends ChainContext>
     extends Step<Program, Program, C> {
   final String suffix;
 

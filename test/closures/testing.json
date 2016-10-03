@@ -8,7 +8,7 @@
   "suites": [
     {
       "name": "closures",
-      "kind": "Compilation",
+      "kind": "Chain",
       "source": "suite.dart",
       "path": "./",
       "status": "closures.status",
