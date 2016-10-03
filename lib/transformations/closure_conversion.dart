@@ -139,6 +139,9 @@ abstract class Context {
   Expression get expression;
 
   void extend(VariableDeclaration variable, Expression value);
+  void update(VariableDeclaration variable, Expression value) {
+    throw "not supported $runtimeType";
+  }
 
   Expression lookup(VariableDeclaration variable);
   Expression assign(VariableDeclaration variable, Expression value);
@@ -178,6 +181,8 @@ class LocalContext extends Context {
   final VariableDeclaration self;
   final IntLiteral size;
   final List<VariableDeclaration> variables = <VariableDeclaration>[];
+  final Map<VariableDeclaration, Arguments> initializers =
+      <VariableDeclaration, Arguments>{};
 
   LocalContext._internal(this.converter, this.parent, this.self, this.size);
 
@@ -202,15 +207,20 @@ class LocalContext extends Context {
   Expression get expression => new VariableGet(self);
 
   void extend(VariableDeclaration variable, Expression value) {
+    Arguments arguments = new Arguments(
+        <Expression>[new IntLiteral(variables.length), value]);
     converter.insert(
         new ExpressionStatement(
-            new MethodInvocation(
-                expression,
-                new Name('[]='),
-                new Arguments(
-                    <Expression>[new IntLiteral(variables.length), value]))));
+            new MethodInvocation(expression, new Name('[]='), arguments)));
     ++size.value;
     variables.add(variable);
+    initializers[variable] = arguments;
+  }
+
+  void update(VariableDeclaration variable, Expression value) {
+    Arguments arguments = initializers[variable];
+    arguments.positional[1] = value;
+    value.parent = arguments;
   }
 
   Expression lookup(VariableDeclaration variable) {
@@ -345,8 +355,7 @@ class ClosureConverter extends Transformer {
   }
 
   TreeNode visitLibrary(Library node) {
-    if (node.importUri.scheme == "dart" ||
-        node.importUri.path.contains("/reify/lib/runtime/")) {
+    if (node.importUri.scheme == "dart") {
       // TODO(ahe): Remove this, it means that we don't transform platform
       // libraries.
       return node;
@@ -383,22 +392,23 @@ class ClosureConverter extends Transformer {
   }
 
   TreeNode visitFunctionDeclaration(FunctionDeclaration node) {
-    if (captured.contains(node.variable)) {
-      context.extend(node.variable,
-                     new FunctionExpression(node.function));
+    /// Is this closure itself captured by a closure?
+    bool isCaptured = captured.contains(node.variable);
+    if (isCaptured) {
+      context.extend(node.variable, new InvalidExpression());
     }
+    Context parent = context;
     return saveContext(() {
       Expression expression = handleLocalFunction(node.function);
 
-      if (captured.contains(node.variable)) {
-        // TODO(ahe): I don't understand how this can happen.
+      if (isCaptured) {
+        parent.update(node.variable, expression);
         return null;
+      } else {
+        node.variable.initializer = expression;
+        expression.parent = node.variable;
+        return node.variable;
       }
-
-      node.variable.initializer = expression;
-      expression.parent = node.variable;
-
-      return node.variable;
     });
   }
 
