@@ -7,15 +7,11 @@ library test.kernel.closures.suite;
 import 'dart:async' show
     Future;
 
-import 'dart:convert' show
-    UTF8;
-
 import 'dart:io' show
     Directory,
     File,
     IOSink,
-    Platform,
-    Process;
+    Platform;
 
 import 'package:analyzer/src/generated/engine.dart' show
     AnalysisContext;
@@ -45,6 +41,7 @@ import 'package:testing/testing.dart' show
     Chain,
     ChainContext,
     Result,
+    StdioProcess,
     Step,
     TestDescription;
 
@@ -255,8 +252,7 @@ class Run extends Step<Program, int, TestContext> {
 
   Future<Result<int>> run(Program program, TestContext context) async {
     Directory tmp = await Directory.systemTemp.createTemp();
-    int exitCode;
-    StringBuffer sb;
+    StdioProcess process;
     try {
       File generated = new File.fromUri(tmp.uri.resolve("generated.dill"));
       IOSink sink = generated.openWrite();
@@ -266,43 +262,19 @@ class Run extends Step<Program, int, TestContext> {
         print("Wrote `${generated.path}`");
         await sink.close();
       }
-      Process process = await Process.start(
+      process = await StdioProcess.run(
           context.vm.toFilePath(), [generated.path, "Hello, World!"]);
-      process.stdin.close();
-      Future<List<String>> stdoutFuture =
-          process.stdout.transform(UTF8.decoder).toList();
-      Future<List<String>> stderrFuture =
-          process.stderr.transform(UTF8.decoder).toList();
-      exitCode = await process.exitCode;
-      sb = new StringBuffer();
-      sb.writeAll(await stdoutFuture);
-      sb.writeAll(await stderrFuture);
     } finally {
       tmp.delete(recursive: true);
     }
-    if (exitCode == 0) {
-      return new Result<int>.pass(exitCode);
-    } else {
-      return new Result<int>.fail(exitCode, "$sb");
-    }
+    return process.toResult();
   }
-
 }
 
 Future<String> runDiff(Uri expected, String actual) async {
-  Process diff = await Process.start(
-      "diff", <String>["-u", expected.toFilePath(), "-"]);
-  diff.stdin.write(actual);
-  Future closeFuture = diff.stdin.close();
-  Future<List<String>> stdoutFuture =
-      diff.stdout.transform(UTF8.decoder).toList();
-  Future<List<String>> stderrFuture =
-      diff.stderr.transform(UTF8.decoder).toList();
-  StringBuffer sb = new StringBuffer();
-  sb.writeAll(await stdoutFuture);
-  sb.writeAll(await stderrFuture);
-  await closeFuture;
-  return "$sb";
+  StdioProcess process = await StdioProcess.run(
+      "diff", <String>["-u", expected.toFilePath(), "-"], input: actual);
+  return process.output;
 }
 
 Future openWrite(Uri uri, f(IOSink sink)) async {
