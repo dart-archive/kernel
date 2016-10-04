@@ -16,6 +16,9 @@ import 'dart:io' show
 import 'package:analyzer/src/generated/engine.dart' show
     AnalysisContext;
 
+import 'package:analyzer/src/generated/sdk.dart' show
+    DartSdk;
+
 import 'package:kernel/analyzer/loader.dart' show
     AnalyzerLoader,
     createDartSdk;
@@ -34,8 +37,11 @@ import 'package:kernel/target/targets.dart' show
 import 'package:kernel/text/ast_to_text.dart' show
     Printer;
 
-import 'package:analyzer/src/generated/sdk.dart' show
-    DartSdk;
+import 'package:kernel/repository.dart' show
+    Repository;
+
+import 'package:kernel/binary/loader.dart' show
+    BinaryLoader;
 
 import 'package:testing/testing.dart' show
     Chain,
@@ -78,6 +84,8 @@ class TestContext extends ChainContext {
       const ClosureConversion(),
       const Print(),
       const MatchExpectation<TestContext>(".expect"),
+      const WriteDill(),
+      const ReadDill(),
       const Run(),
   ];
 
@@ -245,27 +253,57 @@ $buffer""");
   }
 }
 
-class Run extends Step<Program, int, TestContext> {
+class WriteDill extends Step<Program, Uri, TestContext> {
+  const WriteDill();
+
+  String get name => "write .dill";
+
+  Future<Result<Uri>> run(Program program, TestContext context) async {
+    Directory tmp = await Directory.systemTemp.createTemp();
+    Uri uri = tmp.uri.resolve("generated.dill");
+    File generated = new File.fromUri(uri);
+    IOSink sink = generated.openWrite();
+    try {
+      new BinaryPrinter(sink).writeProgramFile(program);
+    } catch (e, s) {
+      return new Result<Uri>.fail(uri, e, s);
+    } finally {
+      print("Wrote `${generated.path}`");
+      await sink.close();
+    }
+    return new Result<Uri>.pass(uri);
+  }
+}
+
+class ReadDill extends Step<Uri, Uri, TestContext> {
+  const ReadDill();
+
+  String get name => "read .dill";
+
+  Future<Result<Uri>> run(Uri uri, TestContext context) async {
+    Repository repository = new Repository();
+    try {
+      new BinaryLoader(repository).loadProgramOrLibrary("$uri");
+    } catch (e, s) {
+      return new Result<Uri>.fail(uri, e, s);
+    }
+    return new Result<Uri>.pass(uri);
+  }
+}
+
+class Run extends Step<Uri, int, TestContext> {
   const Run();
 
   String get name => "run";
 
-  Future<Result<int>> run(Program program, TestContext context) async {
-    Directory tmp = await Directory.systemTemp.createTemp();
+  Future<Result<int>> run(Uri uri, TestContext context) async {
+    File generated = new File.fromUri(uri);
     StdioProcess process;
     try {
-      File generated = new File.fromUri(tmp.uri.resolve("generated.dill"));
-      IOSink sink = generated.openWrite();
-      try {
-        new BinaryPrinter(sink).writeProgramFile(program);
-      } finally {
-        print("Wrote `${generated.path}`");
-        await sink.close();
-      }
       process = await StdioProcess.run(
           context.vm.toFilePath(), [generated.path, "Hello, World!"]);
     } finally {
-      tmp.delete(recursive: true);
+      generated.parent.delete(recursive: true);
     }
     return process.toResult();
   }
