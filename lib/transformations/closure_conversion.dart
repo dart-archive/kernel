@@ -323,7 +323,7 @@ class ClosureContext extends Context {
   }
 }
 
-class ClosureConverter extends Transformer {
+class ClosureConverter extends Transformer with DartTypeVisitor<DartType> {
   final CoreTypes coreTypes;
   final Set<VariableDeclaration> captured;
 
@@ -355,11 +355,6 @@ class ClosureConverter extends Transformer {
   }
 
   TreeNode visitLibrary(Library node) {
-    if (node.importUri.scheme == "dart") {
-      // TODO(ahe): Remove this, it means that we don't transform platform
-      // libraries.
-      return node;
-    }
     currentLibrary = node;
     return super.visitLibrary(node);
   }
@@ -583,5 +578,17 @@ class ClosureConverter extends Transformer {
     return captured.contains(node.variable)
         ? context.assign(node.variable, node.value)
         : node;
+  }
+
+  DartType visitDartType(DartType node) => node.accept(this);
+
+  DartType defaultDartType(DartType node) => node;
+
+  // TODO(ahe): Rewrite type parameters instead.
+  DartType visitInterfaceType(InterfaceType node) => node.classNode.rawType;
+
+  DartType visitTypeParameterType(TypeParameterType node) {
+    // TODO(ahe): Rewrite type parameters instead.
+    return new DynamicType();
   }
 }

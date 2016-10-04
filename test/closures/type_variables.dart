@@ -6,6 +6,7 @@ class C<T> {
   foo() => (T x) {
     T y = x;
     Object z = y;
+    C<T> self = this;
     return z as T;
   };
 }

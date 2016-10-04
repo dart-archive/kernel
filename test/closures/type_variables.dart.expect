@@ -17,15 +17,16 @@ class Closure#0 extends core::Object implements core::Function {
   constructor •(final mock::Context #t1) → dynamic
     : self::Closure#0::context = #t1
     ;
-  method call(self::C::T x) → dynamic {
+  method call(dynamic x) → dynamic {
     final mock::Context #t2 = |{
                                   "This is a temporary solution. In the VM, this will become an additional parameter.";
 
                                  => this.{self::Closure#0::context}
                               }| ;
-    self::C::T y = x;
+    dynamic y = x;
     core::Object z = y;
-    return z as self::C::T;
+    self::C<dynamic> self = this;
+    return z as dynamic;
   }
 }
 static method main(dynamic arguments) → dynamic {
