@@ -96,8 +96,7 @@ Program transformProgram(Program program) {
   var captured = new CapturedVariables();
   captured.visitProgram(program);
 
-  var convert =
-      new ClosureConverter(mockUpContext(program), captured.variables);
+  var convert = new ClosureConverter(mockUpContext(program), captured);
   return convert.visitProgram(program);
 }
 
@@ -108,11 +107,39 @@ class CapturedVariables extends RecursiveVisitor {
 
   final Set<VariableDeclaration> variables = new Set<VariableDeclaration>();
 
+  final Map<FunctionNode, Set<TypeParameter>> typeVariables =
+      <FunctionNode, Set<TypeParameter>>{};
+
+  FunctionNode currentMember;
+
+  bool get isOuterMostContext {
+    return _currentFunction == null || currentMember == _currentFunction;
+  }
+
+  visitConstructor(Constructor node) {
+    currentMember = node.function;
+    super.visitConstructor(node);
+    currentMember = null;
+  }
+
+  visitProcedure(Procedure node) {
+    currentMember = node.function;
+    super.visitProcedure(node);
+    currentMember = null;
+  }
+
   visitFunctionNode(FunctionNode node) {
     var saved = _currentFunction;
     _currentFunction = node;
     node.visitChildren(this);
     _currentFunction = saved;
+    Set<TypeParameter> capturedTypeVariables = typeVariables[node];
+    if (capturedTypeVariables != null && !isOuterMostContext) {
+      // Propagate captured type variables to enclosing function.
+      typeVariables
+          .putIfAbsent(_currentFunction, () => new Set<TypeParameter>())
+          .addAll(capturedTypeVariables);
+    }
   }
 
   visitVariableDeclaration(VariableDeclaration node) {
@@ -132,6 +159,14 @@ class CapturedVariables extends RecursiveVisitor {
       variables.add(node.variable);
     }
     node.visitChildren(this);
+  }
+
+  visitTypeParameterType(TypeParameterType node) {
+    if (!isOuterMostContext) {
+      typeVariables
+          .putIfAbsent(_currentFunction, () => new Set<TypeParameter>())
+          .add(node.parameter);
+    }
   }
 }
 
@@ -325,7 +360,8 @@ class ClosureContext extends Context {
 
 class ClosureConverter extends Transformer with DartTypeVisitor<DartType> {
   final CoreTypes coreTypes;
-  final Set<VariableDeclaration> captured;
+  final Set<VariableDeclaration> capturedVariables;
+  final Map<FunctionNode, Set<TypeParameter>> capturedTypeVariables;
 
   Library currentLibrary;
   int closureCount = 0;
@@ -334,7 +370,11 @@ class ClosureConverter extends Transformer with DartTypeVisitor<DartType> {
 
   Context context;
 
-  ClosureConverter(this.coreTypes, this.captured);
+  FunctionNode currentFunction;
+
+  ClosureConverter(this.coreTypes, CapturedVariables captured)
+      : this.capturedVariables = captured.variables,
+        this.capturedTypeVariables = captured.typeVariables;
 
   void insert(Statement statement) {
     _currentBlock.statements.insert(_insertionIndex++, statement);
@@ -360,10 +400,13 @@ class ClosureConverter extends Transformer with DartTypeVisitor<DartType> {
   }
 
   TreeNode visitConstructor(Constructor node) {
+    // TODO(ahe): Convert closures in constructors as well.
     return node;
   }
 
   Expression handleLocalFunction(FunctionNode function) {
+    FunctionNode savedCurrentFunction = currentFunction;
+    currentFunction = function;
     Statement body = function.body;
     assert(body != null);
 
@@ -383,12 +426,15 @@ class ClosureConverter extends Transformer with DartTypeVisitor<DartType> {
 
     function.transformChildren(this);
 
-    return addClosure(function, contextVariable, parent.expression);
+    Expression result =
+        addClosure(function, contextVariable, parent.expression);
+    currentFunction = savedCurrentFunction;
+    return result;
   }
 
   TreeNode visitFunctionDeclaration(FunctionDeclaration node) {
     /// Is this closure itself captured by a closure?
-    bool isCaptured = captured.contains(node.variable);
+    bool isCaptured = capturedVariables.contains(node.variable);
     if (isCaptured) {
       context.extend(node.variable, new InvalidExpression());
     }
@@ -510,7 +556,7 @@ class ClosureConverter extends Transformer with DartTypeVisitor<DartType> {
   }
 
   TreeNode visitLocalInitializer(LocalInitializer node) {
-    assert(!captured.contains(node.variable));
+    assert(!capturedVariables.contains(node.variable));
     node.transformChildren(this);
     return node;
   }
@@ -523,8 +569,8 @@ class ClosureConverter extends Transformer with DartTypeVisitor<DartType> {
     }
     // TODO: Can parameters contain initializers (e.g., for optional ones) that
     // need to be closure converted?
-    node.positionalParameters.where(captured.contains).forEach(extend);
-    node.namedParameters.where(captured.contains).forEach(extend);
+    node.positionalParameters.where(capturedVariables.contains).forEach(extend);
+    node.namedParameters.where(capturedVariables.contains).forEach(extend);
 
     assert(node.body != null);
     node.body = node.body.accept(this);
@@ -558,7 +604,7 @@ class ClosureConverter extends Transformer with DartTypeVisitor<DartType> {
   TreeNode visitVariableDeclaration(VariableDeclaration node) {
     node.transformChildren(this);
 
-    if (!captured.contains(node)) return node;
+    if (!capturedVariables.contains(node)) return node;
     context.extend(node, node.initializer ?? new NullLiteral());
 
     // TODO(ahe): Return null here when the parent has been correctly
@@ -567,7 +613,7 @@ class ClosureConverter extends Transformer with DartTypeVisitor<DartType> {
   }
 
   TreeNode visitVariableGet(VariableGet node) {
-    return captured.contains(node.variable)
+    return capturedVariables.contains(node.variable)
         ? context.lookup(node.variable)
         : node;
   }
@@ -575,7 +621,7 @@ class ClosureConverter extends Transformer with DartTypeVisitor<DartType> {
   TreeNode visitVariableSet(VariableSet node) {
     node.transformChildren(this);
 
-    return captured.contains(node.variable)
+    return capturedVariables.contains(node.variable)
         ? context.assign(node.variable, node.value)
         : node;
   }
@@ -584,11 +630,34 @@ class ClosureConverter extends Transformer with DartTypeVisitor<DartType> {
 
   DartType defaultDartType(DartType node) => node;
 
-  // TODO(ahe): Rewrite type parameters instead.
-  DartType visitInterfaceType(InterfaceType node) => node.classNode.rawType;
+  DartType visitInterfaceType(InterfaceType node) {
+    List<DartType> typeArguments;
+    for (int i = 0; i < node.typeArguments.length; i++) {
+      DartType argument = node.typeArguments[i];
+      DartType rewritten = argument.accept(this);
+      if (argument != rewritten) {
+        if (typeArguments == null) {
+          typeArguments = new List<DartType>.from(node.typeArguments);
+        }
+        typeArguments[i] = rewritten;
+      }
+    }
+    if (typeArguments == null) {
+      return node;
+    } else {
+      return new InterfaceType(node.classNode, typeArguments);
+    }
+  }
 
   DartType visitTypeParameterType(TypeParameterType node) {
-    // TODO(ahe): Rewrite type parameters instead.
-    return new DynamicType();
+    if (currentFunction == null) return node;
+    Set<TypeParameter> captured = capturedTypeVariables[currentFunction];
+    if (captured != null) {
+      assert(captured.contains(node.parameter));
+      // TODO(ahe): Rewrite type parameters instead.
+      return new DynamicType();
+    } else {
+      return node;
+    }
   }
 }

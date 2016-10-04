@@ -3,12 +3,15 @@ import self as self;
 import "dart:core" as core;
 import "dart:mock" as mock;
 
-class C<T> extends core::Object {
+class C<T, S> extends core::Object {
   constructor •() → void
     : super core::Object::•()
     ;
-  method foo() → dynamic {
+  method foo(self::C::S s) → dynamic {
     return new self::Closure#0::•(null);
+  }
+  method bar() → dynamic {
+    self::C<self::C::T, self::C::S> self = this;
   }
 }
 class Closure#0 extends core::Object implements core::Function {
@@ -25,10 +28,10 @@ class Closure#0 extends core::Object implements core::Function {
                               }| ;
     dynamic y = x;
     core::Object z = y;
-    self::C<dynamic> self = this;
+    self::C<dynamic, dynamic> self = this;
     return z as dynamic;
   }
 }
 static method main(dynamic arguments) → dynamic {
-  core::print(new self::C::•<core::String>().foo().call(arguments.first));
+  core::print(new self::C::•<core::String, core::String>().foo(null).call(arguments.first));
 }

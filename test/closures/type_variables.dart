@@ -2,15 +2,19 @@
 // for details. All rights reserved. Use of this source code is governed by a
 // BSD-style license that can be found in the LICENSE.md file.
 
-class C<T> {
-  foo() => (T x) {
+class C<T, S> {
+  foo(S s) => (T x) {
     T y = x;
     Object z = y;
-    C<T> self = this;
+    C<T, S> self = this;
     return z as T;
   };
+
+  bar() {
+    C<T, S> self = this;
+  }
 }
 
 main(arguments) {
-  print(new C<String>().foo()(arguments.first));
+  print(new C<String, String>().foo(null)(arguments.first));
 }
