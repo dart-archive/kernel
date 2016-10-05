@@ -13,6 +13,14 @@ class C<T, S> {
   bar() {
     C<T, S> self = this;
   }
+  factory C() {
+    local() {
+      C<T, S> self = new C<T, S>.internal();
+      return self;
+    }
+    return local();
+  }
+  C.internal();
 }
 
 main(arguments) {
