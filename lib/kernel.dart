@@ -13,7 +13,6 @@
 ///
 library kernel;
 
-import 'analyzer/loader.dart';
 import 'ast.dart';
 import 'binary/ast_to_binary.dart';
 import 'binary/loader.dart';
@@ -25,57 +24,9 @@ import 'text/ast_to_text.dart';
 export 'ast.dart';
 export 'repository.dart';
 
-Program loadProgramFromBinary(String path) {
-  Repository repository = new Repository();
+Program loadProgramFromBinary(String path, [Repository repository]) {
+  repository ??= new Repository();
   return new BinaryLoader(repository).loadProgram(path);
-}
-
-/// Load a binary library from [path], unless [repository] already has
-/// a loaded version of the library.
-///
-/// If provided, [repository] is used to link URIs to other [Library] objects.
-///
-/// [path] is relative to the working directory of the repository, or
-/// the current working directory if no repository is given.
-Library loadLibraryFromBinary(String path, [Repository repository]) {
-  repository ??= new Repository();
-  var library = repository.getLibrary(path);
-  new BinaryLoader(repository).ensureLibraryIsLoaded(library);
-  return library;
-}
-
-TreeNode loadProgramOrLibraryFromBinary(String path, [Repository repository]) {
-  repository ??= new Repository();
-  return new BinaryLoader(repository).loadProgramOrLibrary(path);
-}
-
-/// Loads a .dart library from [path], unless [repository] already has
-/// a loaded version of that library.
-Library loadLibraryFromDart(String path, [Repository repository]) {
-  repository ??= new Repository();
-  return new AnalyzerLoader(repository).loadLibrary(path);
-}
-
-/// Loads a .dart file from [path] and all of its transitive dependencies.
-///
-/// The resulting [Program] will have a main method if the library at [path]
-/// contains a top-level method named "main", otherwise its main reference will
-/// be `null`.
-Program loadProgramFromDart(String path, Repository repository,
-    {bool strongMode: false}) {
-  return new AnalyzerLoader(repository, strongMode: strongMode)
-      .loadProgram(path);
-}
-
-Future writeLibraryToBinary(Library library, String path) {
-  var sink = new File(path).openWrite();
-  var future;
-  try {
-    new BinaryPrinter(sink).writeLibraryFile(library);
-  } finally {
-    future = sink.close();
-  }
-  return future;
 }
 
 Future writeProgramToBinary(Program program, String path) {
@@ -89,7 +40,7 @@ Future writeProgramToBinary(Program program, String path) {
   return future;
 }
 
-void writeLibraryToText(Library library, [String path]) {
+void writeLibraryToText(Library library, {String path}) {
   StringBuffer buffer = new StringBuffer();
   new Printer(buffer).writeLibraryFile(library);
   if (path == null) {
@@ -99,9 +50,9 @@ void writeLibraryToText(Library library, [String path]) {
   }
 }
 
-void writeProgramToText(Program program, [String path]) {
+void writeProgramToText(Program program, {String path, bool showExternal: false}) {
   StringBuffer buffer = new StringBuffer();
-  new Printer(buffer).writeProgramFile(program);
+  new Printer(buffer, showExternal: showExternal).writeProgramFile(program);
   if (path == null) {
     print(buffer);
   } else {

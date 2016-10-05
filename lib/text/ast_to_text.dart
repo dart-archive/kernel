@@ -174,22 +174,25 @@ class Printer extends Visitor<Null> {
   ImportTable importTable;
   int indentation = 0;
   int column = 0;
+  bool showExternal;
 
   static int SPACE = 0;
   static int WORD = 1;
   static int SYMBOL = 2;
   int state = SPACE;
 
-  Printer(this.sink, {NameSystem syntheticNames,
-                      this.importTable,
-                      this.annotator: const InferredValueAnnotator()})
-      : this.syntheticNames = syntheticNames ?? new NameSystem() {
-  }
+  Printer(this.sink,
+      {NameSystem syntheticNames,
+      this.showExternal,
+      this.importTable,
+      this.annotator: const InferredValueAnnotator()})
+      : this.syntheticNames = syntheticNames ?? new NameSystem();
 
   Printer._inner(Printer parent, this.importTable)
       : sink = parent.sink,
         syntheticNames = parent.syntheticNames,
-        annotator = parent.annotator;
+        annotator = parent.annotator,
+        showExternal = parent.showExternal;
 
   String getLibraryName(Library node) {
     return node.name ?? syntheticNames.nameLibrary(node);
@@ -300,12 +303,17 @@ class Printer extends Visitor<Null> {
   void writeProgramFile(Program program) {
     ImportTable imports = new ProgramImportTable(program);
     var inner = new Printer._inner(this, imports);
-    endLine('program;');
     writeWord('main');
     writeSpaced('=');
     inner.writeMemberReference(program.mainMethod);
     endLine(';');
     for (var library in program.libraries) {
+      if (library.isExternal) {
+        if (!showExternal) {
+          continue;
+        }
+        writeWord('external');
+      }
       writeWord('library');
       if (library.name != null) {
         writeWord(library.name);
@@ -318,9 +326,6 @@ class Printer extends Visitor<Null> {
       writeSpaced('as');
       writeWord(prefix);
       endLine(' {');
-      if (!library.isLoaded) {
-        inner.endLine('<library is not loaded>');
-      }
       ++inner.indentation;
       library.classes.forEach(inner.writeNode);
       library.fields.forEach(inner.writeNode);
@@ -635,12 +640,32 @@ class Printer extends Visitor<Null> {
     writeModifier(node.isStatic, 'static');
     writeModifier(node.isFinal, 'final');
     writeModifier(node.isConst, 'const');
+    // Only show implicit getter/setter modifiers in cases where they are
+    // out of the ordinary.
+    if (node.isStatic) {
+      writeModifier(node.hasImplicitGetter, '[getter]');
+      writeModifier(node.hasImplicitSetter, '[setter]');
+    } else {
+      writeModifier(!node.hasImplicitGetter, '[no-getter]');
+      if (node.isFinal) {
+        writeModifier(node.hasImplicitSetter, '[setter]');
+      } else {
+        writeModifier(!node.hasImplicitSetter, '[no-setter]');
+      }
+    }
     writeWord('field');
+    writeSpace();
     writeAnnotatedType(node.type, annotator?.annotateField(this, node));
     writeName(getMemberName(node));
     if (node.initializer != null) {
       writeSpaced('=');
       writeExpression(node.initializer);
+    }
+    if ((node.enclosingClass == null &&
+        node.enclosingLibrary.fileUri != node.fileUri) ||
+        (node.enclosingClass != null &&
+            node.enclosingClass.fileUri != node.fileUri)) {
+      writeWord("/* from ${node.fileUri} */");
     }
     endLine(';');
   }
@@ -652,6 +677,12 @@ class Printer extends Visitor<Null> {
     writeModifier(node.isStatic, 'static');
     writeModifier(node.isAbstract, 'abstract');
     writeWord(procedureKindToString(node.kind));
+    if ((node.enclosingClass == null &&
+            node.enclosingLibrary.fileUri != node.fileUri) ||
+        (node.enclosingClass != null &&
+            node.enclosingClass.fileUri != node.fileUri)) {
+      writeWord("/* from ${node.fileUri} */");
+    }
     writeFunction(node.function, name: getMemberName(node));
   }
 
@@ -678,14 +709,18 @@ class Printer extends Visitor<Null> {
       writeSpaced('with');
       writeType(node.mixedInType);
     } else if (node.supertype != null) {
-      writeWord('extends');
+      writeSpaced('extends');
       writeType(node.supertype);
     }
     if (node.implementedTypes.isNotEmpty) {
-      writeWord('implements');
+      writeSpaced('implements');
       writeList(node.implementedTypes, writeType);
     }
-    endLine(' {');
+    var endLineString = ' {';
+    if (node.enclosingLibrary.fileUri != node.fileUri) {
+      endLineString += ' // from ${node.fileUri}';
+    }
+    endLine(endLineString);
     ++indentation;
     node.fields.forEach(writeNode);
     node.constructors.forEach(writeNode);
@@ -841,6 +876,7 @@ class Printer extends Visitor<Null> {
 
   visitThrow(Throw node) {
     writeWord('throw');
+    writeSpace();
     writeExpression(node.expression);
   }
 
@@ -1182,6 +1218,7 @@ class Printer extends Visitor<Null> {
     writeIndentation();
     writeWord('return');
     if (node.expression != null) {
+      writeSpace();
       writeExpression(node.expression);
     }
     endLine(';');

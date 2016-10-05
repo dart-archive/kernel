@@ -23,9 +23,7 @@ import '../frontend/accessors.dart';
 ///         list[i] = value;
 ///       }
 ///     }
-CoreTypes mockUpContext(Program program) {
-  CoreTypes coreTypes = new CoreTypes(program);
-
+CoreTypes mockUpContext(CoreTypes coreTypes, Program program) {
   ///     final List list;
   Field listField = new Field(
       new Name("list"), type: coreTypes.listClass.rawType, isFinal: true);
@@ -99,7 +97,8 @@ Program transformProgram(Program program) {
   var captured = new CapturedVariables();
   captured.visitProgram(program);
 
-  var convert = new ClosureConverter(mockUpContext(program), captured);
+  CoreTypes coreTypes = new CoreTypes(program);
+  var convert = new ClosureConverter(coreTypes, captured);
   return convert.visitProgram(program);
 }
 

@@ -4,7 +4,9 @@
 library kernel.target.targets;
 
 import '../ast.dart';
+
 import 'vm.dart';
+import 'flutter.dart';
 
 final List<String> targetNames = targets.keys.toList();
 
@@ -18,6 +20,7 @@ typedef Target _TargetBuilder(TargetFlags flags);
 final Map<String, _TargetBuilder> targets = <String, _TargetBuilder>{
   'none': (TargetFlags flags) => new NoneTarget(flags),
   'vm': (TargetFlags flags) => new VmTarget(flags),
+  'flutter': (TargetFlags flags) => new FlutterTarget(flags),
 };
 
 Target getTarget(String name, TargetFlags flags) {
@@ -33,7 +36,16 @@ abstract class Target {
   /// A list of URIs of required libraries, not including dart:core.
   ///
   /// Libraries will be loaded in order.
-  List<String> get extraRequiredLibraries;
+  List<String> get extraRequiredLibraries => <String>[];
+
+  /// Additional declared variables implied by this target.
+  ///
+  /// These can also be passed on the command-line of form `-D<name>=<value>`,
+  /// and those provided on the command-line take precedence over those defined
+  /// by the target.
+  Map<String, String> get extraDeclaredVariables => const <String, String>{};
+
+  bool get strongMode;
 
   void transformProgram(Program program);
 
@@ -45,6 +57,7 @@ class NoneTarget extends Target {
 
   NoneTarget(this.flags);
 
+  bool get strongMode => flags.strongMode;
   String get name => 'none';
   List<String> get extraRequiredLibraries => <String>[];
   void transformProgram(Program program) {}

@@ -25,7 +25,6 @@ class CoreTypes {
   Class internalSymbolClass;
   Class typeClass;
   Class functionClass;
-  Class internalContextClass;
 
   Library getCoreLibrary(String uri) => _dartLibraries[uri].library;
 
@@ -67,7 +66,6 @@ class CoreTypes {
     futureClass = dartAsync.require('Future');
     streamClass = dartAsync.require('Stream');
     internalSymbolClass = dartInternal.require('Symbol');
-    internalContextClass = dartInternal.require('Context');
   }
 }
 
@@ -86,7 +84,13 @@ class _LibraryIndex {
 
   Class require(String name) {
     Class result = classes[name];
-    if (result == null) throw 'Missing class $name from ${library.name}';
+    if (result == null) {
+      if (library.isExternal) {
+        throw 'Missing class $name from external library ${library.name}';
+      } else {
+        throw 'Missing class $name from ${library.name}';
+      }
+    }
     return result;
   }
 }

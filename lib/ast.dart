@@ -14,33 +14,6 @@
 /// there are no direct invocations of a constructor on a abstract class.
 ///
 /// -----------------------------------------------------------------------
-///                                 NAMES
-/// -----------------------------------------------------------------------
-///
-/// We distinguish two kinds of names, **binding names** and **cosmetic names**.
-///
-/// Binding names are:
-/// - names used for dynamic dispatch
-/// - external member names
-/// - named parameter names
-///
-/// Cosmetic names are everything else, for example:
-/// - local variable names
-/// - positional parameter names
-/// - static member names (non-external)
-/// - constructor names (non-external)
-/// - class names
-/// - library names
-///
-/// Cosmetic names are only stored at the definition site of an object, e.g.
-/// a static method invocation does not store the name of the target method,
-/// only the method itself does.
-///
-/// Cosmetic names can sometimes be observed by introspection features like
-/// mirrors, they can show up in stack traces, and transformers may want to rely
-/// on them.  Cosmetic names may in general be `null` for synthetic objects.
-///
-/// -----------------------------------------------------------------------
 ///                           STATIC vs TOP-LEVEL
 /// -----------------------------------------------------------------------
 ///
@@ -115,8 +88,14 @@ abstract class Node {
 abstract class TreeNode extends Node {
   static int _hashCounter = 0;
   final int hashCode = _hashCounter = (_hashCounter + 1) & 0x3fffffff;
+  static const int noOffset = -1;
 
   TreeNode parent;
+
+  /// Offset in the source file it comes from. Valid values are from 0 and up,
+  /// or -1 ([noOffset]) if the file offset is not available
+  /// (this is the default if none is specifically set).
+  int fileOffset = noOffset;
 
   accept(TreeVisitor v);
   visitChildren(Visitor v);
@@ -165,29 +144,30 @@ class Library extends TreeNode implements Comparable<Library> {
   /// An absolute import path to this library.
   ///
   /// The [Uri] should have the `dart`, `package`, or `file` scheme.
-  //
-  // DESIGN TODO: Absolute `file` URIs are not ideal for serialization. We will
-  //   revise this when we implement modular compilation.
   Uri importUri;
 
-  /// If false, the library object is a placeholder for a library that has
-  /// not been loaded yet.
-  ///
-  /// The [importUri] is always set on an unloaded library, and can be used
-  /// as the key to load the library.
-  ///
-  /// Unloaded libraries may contain arbitrary classes and members for use by
-  /// the frontend until the library is loaded.  Clients should not rely
-  /// on unloaded library objects being in any particular state.
-  bool isLoaded = true;
+  /// The uri of the source file this library was loaded from.
+  String fileUri;
 
-  String name; // Cosmetic name.
+  /// If true, the library is part of another build unit and its contents
+  /// are only partially loaded.
+  ///
+  /// Classes of an external library are loaded at one of the [ClassLevel]s
+  /// other than [ClassLevel.Body].  Members in an external library have no
+  /// body, but have their typed interface present.
+  ///
+  /// If the libary is non-external, then its classes are at [ClassLevel.Body]
+  /// and all members are loaded.
+  bool isExternal;
+
+  String name;
   final List<Class> classes;
   final List<Procedure> procedures;
   final List<Field> fields;
 
   Library(this.importUri,
       {this.name,
+      this.isExternal: false,
       List<Class> classes,
       List<Procedure> procedures,
       List<Field> fields})
@@ -246,6 +226,41 @@ class Library extends TreeNode implements Comparable<Library> {
   String toString() => debugLibraryName(this);
 }
 
+/// The degree to which the contents of a class have been loaded into memory.
+///
+/// Each level imply the requirements of the previous ones.
+enum ClassLevel {
+  /// Temporary loading level for internal use by IR producers.  Consumers of
+  /// kernel code should not expect to see classes at this level.
+  Temporary,
+
+  /// The class may be used as a type, and it may contain members that are
+  /// referenced from this build unit.
+  ///
+  /// The type parameters and their bounds are present.
+  ///
+  /// There is no guarantee that all members are present.
+  ///
+  /// All supertypes of this class are at [Type] level or higher.
+  Type,
+
+  /// All instance members of the class are present.
+  ///
+  /// All supertypes of this class are at [Hierarchy] level or higher.
+  ///
+  /// This level exists so supertypes of a fully loaded class contain all the
+  /// members needed to detect override constraints.
+  Hierarchy,
+
+  /// All members of the class are fully loaded and are in the correct order.
+  ///
+  /// Annotations are present on classes and members.
+  ///
+  /// All supertypes of this class are at [Hierarchy] level or higher,
+  /// not necessarily at [Body] level.
+  Body,
+}
+
 /// Declaration of a regular class or a mixin application.
 ///
 /// Mixin applications may not contain fields or procedures, as they implicitly
@@ -253,6 +268,9 @@ class Library extends TreeNode implements Comparable<Library> {
 /// rule directly, as doing so can obstruct transformations.  It is possible to
 /// transform a mixin application to become a regular class, and vice versa.
 class Class extends TreeNode {
+  /// The degree to which the contents of the class have been loaded.
+  ClassLevel level = ClassLevel.Body;
+
   /// List of metadata annotations on the class.
   ///
   /// This defaults to an immutable empty list. Use [addAnnotation] to add
@@ -268,6 +286,10 @@ class Class extends TreeNode {
   /// applications.
   String name;
   bool isAbstract;
+
+  /// The uri of the source file this class was loaded from.
+  String fileUri;
+
   final List<TypeParameter> typeParameters;
 
   /// The immediate super type, or `null` if this is the root class.
@@ -301,7 +323,8 @@ class Class extends TreeNode {
       List<InterfaceType> implementedTypes,
       List<Constructor> constructors,
       List<Procedure> procedures,
-      List<Field> fields})
+      List<Field> fields,
+      this.fileUri})
       : this.typeParameters = typeParameters ?? <TypeParameter>[],
         this.implementedTypes = implementedTypes ?? <InterfaceType>[],
         this.fields = fields ?? <Field>[],
@@ -375,7 +398,12 @@ class Class extends TreeNode {
   accept(TreeVisitor v) => v.visitClass(this);
   acceptReference(Visitor v) => v.visitClassReference(this);
 
-  bool get isLoaded => enclosingLibrary.isLoaded;
+  /// If true, the class is part of an external library, that is, it is defined
+  /// in another build unit.  Only a subset of its members are present.
+  ///
+  /// These classes should be loaded at either [ClassLevel.Type] or
+  /// [ClassLevel.Hierarchy] level.
+  bool get isInExternalLibrary => enclosingLibrary.isExternal;
 
   InterfaceType _rawType;
   InterfaceType get rawType => _rawType ??= new InterfaceType(this);
@@ -427,6 +455,13 @@ class Class extends TreeNode {
 //                            MEMBERS
 // ------------------------------------------------------------------------
 
+/// A indirect reference to a member, which can be updated to point at another
+/// member at a later time.
+class _MemberAccessor {
+  Member target;
+  _MemberAccessor(this.target);
+}
+
 abstract class Member extends TreeNode {
   /// List of metadata annotations on the member.
   ///
@@ -460,7 +495,10 @@ abstract class Member extends TreeNode {
   accept(MemberVisitor v);
   acceptReference(MemberReferenceVisitor v);
 
-  bool get isLoaded => enclosingLibrary.isLoaded;
+  /// If true, the member is part of an external library, that is, it is defined
+  /// in another build unit.  Such members have no body or initializer present
+  /// in the IR.
+  bool get isInExternalLibrary => enclosingLibrary.isExternal;
 
   /// Returns true if this is an abstract procedure.
   bool get isAbstract => false;
@@ -477,6 +515,12 @@ abstract class Member extends TreeNode {
   /// True if this is a non-static field or procedure.
   bool get isInstanceMember;
 
+  /// True if the member has the `external` modifier, implying that the
+  /// implementation is provided by the backend, and is not necessarily written
+  /// in Dart.
+  ///
+  /// Members can have this modifier independently of whether the enclosing
+  /// library is external.
   bool get isExternal;
   void set isExternal(bool value);
 
@@ -501,16 +545,25 @@ abstract class Member extends TreeNode {
   bool get containsSuperCalls {
     return transformerFlags & TransformerFlag.superCalls != 0;
   }
+
+  _MemberAccessor get _getterInterface;
+  _MemberAccessor get _setterInterface;
 }
 
 /// A field declaration.
 ///
-/// The implied getter and setter for the field are not represented explicitly.
+/// The implied getter and setter for the field are not represented explicitly,
+/// but can be made explicit if needed.
 class Field extends Member {
+  _MemberAccessor _getterInterface, _setterInterface;
+
   DartType type; // Not null. Defaults to DynamicType.
   InferredValue inferredValue; // May be null.
   int flags = 0;
   Expression initializer; // May be null.
+
+  /// The uri of the source file this field was loaded from.
+  String fileUri;
 
   Field(Name name,
       {this.type: const DynamicType(),
@@ -519,23 +572,52 @@ class Field extends Member {
       bool isFinal: false,
       bool isConst: false,
       bool isStatic: false,
-      int transformerFlags: 0})
+      bool hasImplicitGetter,
+      bool hasImplicitSetter,
+      int transformerFlags: 0,
+      this.fileUri})
       : super(name) {
+    _getterInterface = new _MemberAccessor(this);
+    _setterInterface = new _MemberAccessor(this);
     assert(type != null);
     initializer?.parent = this;
     this.isFinal = isFinal;
     this.isConst = isConst;
     this.isStatic = isStatic;
+    this.hasImplicitGetter = hasImplicitGetter ?? !isStatic;
+    this.hasImplicitSetter = hasImplicitSetter ?? (!isStatic && !isFinal);
     this.transformerFlags = transformerFlags;
   }
 
   static const int FlagFinal = 1 << 0; // Must match serialized bit positions.
   static const int FlagConst = 1 << 1;
   static const int FlagStatic = 1 << 2;
+  static const int FlagHasImplicitGetter = 1 << 3;
+  static const int FlagHasImplicitSetter = 1 << 4;
 
   bool get isFinal => flags & FlagFinal != 0;
   bool get isConst => flags & FlagConst != 0;
   bool get isStatic => flags & FlagStatic != 0;
+
+  /// If true, a getter should be generated for this field.
+  ///
+  /// If false, there may or may not exist an explicit getter in the same class
+  /// with the same name as the field.
+  ///
+  /// By default, all non-static fields have implicit getters.
+  bool get hasImplicitGetter => flags & FlagHasImplicitGetter != 0;
+
+  /// If true, a setter should be generated for this field.
+  ///
+  /// If false, there may or may not exist an explicit setter in the same class
+  /// with the same name as the field.
+  ///
+  /// Final fields never have implicit setters, but a field without an implicit
+  /// setter is not necessarily final, as it may be mutated by direct field
+  /// access.
+  ///
+  /// By default, all non-static, non-final fields have implicit getters.
+  bool get hasImplicitSetter => flags & FlagHasImplicitSetter != 0;
 
   void set isFinal(bool value) {
     flags = value ? (flags | FlagFinal) : (flags & ~FlagFinal);
@@ -547,6 +629,18 @@ class Field extends Member {
 
   void set isStatic(bool value) {
     flags = value ? (flags | FlagStatic) : (flags & ~FlagStatic);
+  }
+
+  void set hasImplicitGetter(bool value) {
+    flags = value
+        ? (flags | FlagHasImplicitGetter)
+        : (flags & ~FlagHasImplicitGetter);
+  }
+
+  void set hasImplicitSetter(bool value) {
+    flags = value
+        ? (flags | FlagHasImplicitSetter)
+        : (flags & ~FlagHasImplicitSetter);
   }
 
   /// True if the field is neither final nor const.
@@ -583,6 +677,46 @@ class Field extends Member {
 
   DartType get getterType => type;
   DartType get setterType => isMutable ? type : const BottomType();
+
+  /// Makes all [PropertyGet]s that have this field as its interface target
+  /// use [getter] as its interface target instead.
+  ///
+  /// That can be used to introduce an explicit getter for a field instead of
+  /// its implicit getter.
+  ///
+  /// This method only updates the stored interface target -- the caller must
+  /// ensure that [getter] actually becomes the target for dispatches that
+  /// would previously hit the implicit field getter.
+  ///
+  /// [DirectPropertyGet]s are not affected, and will continue to access the
+  /// field directly. [PropertyGet] nodes created after the call will not be
+  /// affected until the method is called again.
+  ///
+  /// Existing [ClassHierarchy] instances are not affected by this call.
+  void replaceGetterInterfaceWith(Procedure getter) {
+    _getterInterface.target = getter;
+    _getterInterface = new _MemberAccessor(this);
+  }
+
+  /// Makes all [PropertySet]s that have this field as its interface target
+  /// use [setter] as its interface target instead.
+  ///
+  /// That can be used to introduce an explicit setter for a field instead of
+  /// its implicit setter.
+  ///
+  /// This method only updates the stored interface target -- the caller must
+  /// ensure that [setter] actually becomes the target for dispatches that
+  /// would previously hit the implicit field setter.
+  ///
+  /// [DirectPropertySet] and [FieldInitializer]s are not affected, and will
+  /// continue to access the field directly.  [PropertySet] nodes created after
+  /// the call will not be affected until the method is called again.
+  ///
+  /// Existing [ClassHierarchy] instances are not affected by this call.
+  void replaceSetterInterfaceWith(Procedure setter) {
+    _setterInterface.target = setter;
+    _setterInterface = new _MemberAccessor(this);
+  }
 }
 
 /// A generative constructor, possibly redirecting.
@@ -592,8 +726,7 @@ class Field extends Member {
 /// Constructors do not take type parameters.  Type arguments from a constructor
 /// invocation should be matched with the type parameters declared in the class.
 ///
-/// For non-external constructors, the name is cosmetic.  For unnamed
-/// constructors, the name is an empty string (in a [Name]).
+/// For unnamed constructors, the name is an empty string (in a [Name]).
 class Constructor extends Member {
   int flags = 0;
   FunctionNode function;
@@ -655,6 +788,14 @@ class Constructor extends Member {
 
   DartType get getterType => const BottomType();
   DartType get setterType => const BottomType();
+
+  _MemberAccessor get _getterInterface {
+    throw 'Constructors cannot be used as getters';
+  }
+
+  _MemberAccessor get _setterInterface {
+    throw 'Constructors cannot be used as setters';
+  }
 }
 
 /// A method, getter, setter, index-getter, index-setter, operator overloader,
@@ -662,9 +803,6 @@ class Constructor extends Member {
 ///
 /// Procedures can have the static, abstract, and/or external modifier, although
 /// only the static and external modifiers may be used together.
-///
-/// For static non-external procedures, the name is cosmetic and may be `null`
-/// but keep that the name may show up in stack traces.
 ///
 /// For non-static procedures the name is required for dynamic dispatch.
 /// For external procedures the name is required for identifying the external
@@ -676,17 +814,23 @@ class Constructor extends Member {
 /// For operators, this is the token for the operator, e.g. `+` or `==`,
 /// except for the unary minus operator, whose name is `unary-`.
 class Procedure extends Member {
+  _MemberAccessor _reference;
   ProcedureKind kind;
   int flags = 0;
   FunctionNode function; // Body is null if and only if abstract or external.
+
+  /// The uri of the source file this procedure was loaded from.
+  String fileUri;
 
   Procedure(Name name, this.kind, this.function,
       {bool isAbstract: false,
       bool isStatic: false,
       bool isExternal: false,
       bool isConst: false,
-      int transformerFlags: 0})
+      int transformerFlags: 0,
+      this.fileUri})
       : super(name) {
+    _reference = new _MemberAccessor(this);
     function?.parent = this;
     this.isAbstract = isAbstract;
     this.isStatic = isStatic;
@@ -758,6 +902,9 @@ class Procedure extends Member {
         ? function.positionalParameters[0].type
         : const BottomType();
   }
+
+  _MemberAccessor get _getterInterface => _reference;
+  _MemberAccessor get _setterInterface => _reference;
 }
 
 enum ProcedureKind { Method, Getter, Setter, Operator, Factory, }
@@ -1107,7 +1254,11 @@ class VariableGet extends Expression {
     promotedType?.accept(v);
   }
 
-  transformChildren(Transformer v) {}
+  transformChildren(Transformer v) {
+    if (promotedType != null) {
+      promotedType = v.visitDartType(promotedType);
+    }
+  }
 }
 
 /// Assign a local variable or function parameter.
@@ -1142,13 +1293,21 @@ class PropertyGet extends Expression {
   Expression receiver;
   Name name;
 
-  Member interfaceTarget;
+  _MemberAccessor _interfaceTargetReference;
 
-  PropertyGet(this.receiver, this.name, [this.interfaceTarget]) {
+  PropertyGet(this.receiver, this.name, [Member interfaceTarget]) {
     receiver?.parent = this;
+    this.interfaceTarget = interfaceTarget;
+  }
+
+  Member get interfaceTarget => _interfaceTargetReference?.target;
+
+  void set interfaceTarget(Member newTarget) {
+    _interfaceTargetReference = newTarget?._getterInterface;
   }
 
   DartType getStaticType(TypeEnvironment types) {
+    var interfaceTarget = this.interfaceTarget;
     if (interfaceTarget != null) {
       Class superclass = interfaceTarget.enclosingClass;
       var receiverType = receiver.getStaticTypeAsInstanceOf(superclass, types);
@@ -1187,11 +1346,18 @@ class PropertySet extends Expression {
   Name name;
   Expression value;
 
-  Member interfaceTarget;
+  _MemberAccessor _interfaceTargetReference;
 
-  PropertySet(this.receiver, this.name, this.value, [this.interfaceTarget]) {
+  PropertySet(this.receiver, this.name, this.value, [Member interfaceTarget]) {
     receiver?.parent = this;
     value?.parent = this;
+    this.interfaceTarget = interfaceTarget;
+  }
+
+  Member get interfaceTarget => _interfaceTargetReference?.target;
+
+  void set interfaceTarget(Member newTarget) {
+    _interfaceTargetReference = newTarget?._setterInterface;
   }
 
   DartType getStaticType(TypeEnvironment types) => value.getStaticType(types);
@@ -1328,9 +1494,17 @@ class DirectMethodInvocation extends Expression {
 /// This may invoke a getter, read a field, or tear off a method.
 class SuperPropertyGet extends Expression {
   Name name;
-  Member interfaceTarget;
+  _MemberAccessor _interfaceTargetReference;
 
-  SuperPropertyGet(this.name, this.interfaceTarget);
+  SuperPropertyGet(this.name, [Member interfaceTarget]) {
+    _interfaceTargetReference = interfaceTarget?._getterInterface;
+  }
+
+  Member get interfaceTarget => _interfaceTargetReference?.target;
+
+  void set interfaceTarget(Member newTarget) {
+    _interfaceTargetReference = newTarget?._getterInterface;
+  }
 
   DartType getStaticType(TypeEnvironment types) {
     Class declaringClass = interfaceTarget.enclosingClass;
@@ -1357,11 +1531,17 @@ class SuperPropertyGet extends Expression {
 class SuperPropertySet extends Expression {
   Name name;
   Expression value;
+  _MemberAccessor _interfaceTargetReference;
 
-  Member interfaceTarget;
-
-  SuperPropertySet(this.name, this.value, this.interfaceTarget) {
+  SuperPropertySet(this.name, this.value, [Member interfaceTarget]) {
     value?.parent = this;
+    _interfaceTargetReference = interfaceTarget?._setterInterface;
+  }
+
+  Member get interfaceTarget => _interfaceTargetReference?.target;
+
+  void set interfaceTarget(Member newTarget) {
+    _interfaceTargetReference = newTarget?._setterInterface;
   }
 
   DartType getStaticType(TypeEnvironment types) => value.getStaticType(types);
@@ -1709,23 +1889,18 @@ class Not extends Expression {
   }
 }
 
-/// Expression of form `x && y`, `x || y`, or `x ?? y`.
+/// Expression of form `x && y` or `x || y`
 class LogicalExpression extends Expression {
   Expression left;
   String operator; // && or || or ??
   Expression right;
 
-  DartType staticType;
-
-  LogicalExpression(this.left, this.operator, this.right, [this.staticType]) {
+  LogicalExpression(this.left, this.operator, this.right) {
     left?.parent = this;
     right?.parent = this;
   }
 
-  DartType getStaticType(TypeEnvironment types) {
-    if (staticType != null) return staticType;
-    return operator == '??' ? const DynamicType() : types.boolType;
-  }
+  DartType getStaticType(TypeEnvironment types) => types.boolType;
 
   accept(ExpressionVisitor v) => v.visitLogicalExpression(this);
 
@@ -1781,6 +1956,7 @@ class ConditionalExpression extends Expression {
     condition?.accept(v);
     then?.accept(v);
     otherwise?.accept(v);
+    staticType?.accept(v);
   }
 
   transformChildren(Transformer v) {
@@ -1795,6 +1971,9 @@ class ConditionalExpression extends Expression {
     if (otherwise != null) {
       otherwise = otherwise.accept(v);
       otherwise?.parent = this;
+    }
+    if (staticType != null) {
+      staticType = v.visitDartType(staticType);
     }
   }
 }
@@ -3229,10 +3408,17 @@ class TypeParameter extends TreeNode {
 class Program extends TreeNode {
   final List<Library> libraries;
 
+  /// Map from a source file uri to a line-starts table.
+  /// Given a source file uri and a offset in that file one can translate
+  /// it to a line:column position in that file.
+  final Map<String, List<int>> uriToLineStarts;
+
   /// Reference to the main method in one of the libraries.
   Procedure mainMethod;
 
-  Program([List<Library> libraries]) : libraries = libraries ?? <Library>[] {
+  Program([List<Library> libraries, Map<String, List<int>> uriToLineStarts])
+      : libraries = libraries ?? <Library>[],
+        uriToLineStarts = uriToLineStarts ?? {} {
     setParents(libraries, this);
   }
 

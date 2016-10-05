@@ -33,6 +33,7 @@ class BinaryBuilder {
   int _byteIndex = 0;
   Library _currentLibrary;
   List<String> _stringTable;
+  List<String> _sourceUriTable;
   int _transformerFlags = 0;
 
   // If something goes wrong, this list should indicate what library,
@@ -102,6 +103,18 @@ class BinaryBuilder {
     }
   }
 
+  String readUriReference() {
+    return _sourceUriTable[readUInt()];
+  }
+
+  void readSourceUriTable() {
+    int length = readUInt();
+    _sourceUriTable = new List<String>(length);
+    for (int i = 0; i < length; ++i) {
+      _sourceUriTable[i] = readStringEntry();
+    }
+  }
+
   String readStringReference() {
     return _stringTable[readUInt()];
   }
@@ -157,54 +170,14 @@ class BinaryBuilder {
     }
   }
 
-  TreeNode readProgramOrLibraryFile(Library makeLibrary()) {
-    int magic = readMagicWord();
-    switch (magic) {
-      case Tag.LibraryFile:
-        var library = makeLibrary();
-        readUntaggedLibraryFile(library);
-        return library;
-      case Tag.ProgramFile:
-        return readUntaggedProgramFile();
-      default:
-        throw fail('This is not a binary dart file. '
-            'Magic number was: ${magic.toRadixString(16)}');
-    }
-  }
-
-  void readLibraryFile(Library library) {
-    int magic = readMagicWord();
-    if (magic != Tag.LibraryFile) {
-      if (magic == Tag.ProgramFile) {
-        throw fail('This is a program file, not a library.');
-      }
-      throw fail('This is not a binary dart file. '
-          'Magic number was: ${magic.toRadixString(16)}');
-    }
-    readUntaggedLibraryFile(library);
-  }
-
-  void readUntaggedLibraryFile(Library library) {
-    this._currentLibrary = library;
-    readStringTable();
-    readImportTable();
-    readLibrary();
-  }
-
   Program readProgramFile() {
     int magic = readMagicWord();
     if (magic != Tag.ProgramFile) {
-      if (magic == Tag.LibraryFile) {
-        throw fail('This is a library file, not a program.');
-      }
       throw fail('This is not a binary dart file. '
           'Magic number was: ${magic.toRadixString(16)}');
     }
-    return readUntaggedProgramFile();
-  }
-
-  Program readUntaggedProgramFile() {
     readStringTable();
+    Map<String, List<int>> uriToLineStarts = readUriToLineStarts();
     importTable.length = readUInt();
     for (int i = 0; i < importTable.length; ++i) {
       importTable[i] = new Library(null);
@@ -213,24 +186,27 @@ class BinaryBuilder {
       _currentLibrary = importTable[i];
       readLibrary();
     }
-    var mainMethod = readMemberReference();
-    return new Program(importTable)..mainMethod = mainMethod;
+    var mainMethod = readMemberReference(allowNull: true);
+    return new Program(importTable, uriToLineStarts)..mainMethod = mainMethod;
   }
 
-  void readImportTable() {
-    importTable.length = readUInt();
-    if (importTable.isEmpty) {
-      throw fail('File must contain at least one import (the self reference)');
+  Map<String, List<int>> readUriToLineStarts() {
+    readSourceUriTable();
+    int length = _sourceUriTable.length;
+    Map<String, List<int>> uriToLineStarts = {};
+    for (int i = 0; i < length; ++i) {
+      String uri = _sourceUriTable[i];
+      int lineCount = readUInt();
+      List<int> lineStarts = new List<int>(lineCount);
+      int previousLineStart = 0;
+      for (int j = 0; j < lineCount; ++j) {
+        int lineStart = readUInt() + previousLineStart;
+        lineStarts[j] = lineStart;
+        previousLineStart = lineStart;
+      }
+      uriToLineStarts[uri] = lineStarts;
     }
-    String self = readStringReference();
-    if (!self.isEmpty) {
-      throw fail('First import must be empty (the self reference)');
-    }
-    importTable[0] = _currentLibrary;
-    for (int i = 1; i < importTable.length; ++i) {
-      var importPath = readStringReference();
-      importTable[i] = loader.getLibraryReference(_currentLibrary, importPath);
-    }
+    return uriToLineStarts;
   }
 
   void _fillLazilyLoadedList(
@@ -303,11 +279,17 @@ class BinaryBuilder {
   }
 
   void readLibrary() {
+    int flags = readByte();
+    _currentLibrary.isExternal = (flags & 0x1) != 0;
     _currentLibrary.name = readStringOrNullIfEmpty();
     _currentLibrary.importUri = readImportUri();
     debugPath.add(_currentLibrary.name ??
         _currentLibrary.importUri?.toString() ??
         'library');
+
+    // TODO(jensj): We currently save (almost the same) uri twice.
+    _currentLibrary.fileUri = readUriReference();
+
     _fillLazilyLoadedList(_currentLibrary.classes, (int tag, int index) {
       readClass(loader.getClassReference(_currentLibrary, tag, index), tag);
     });
@@ -339,7 +321,11 @@ class BinaryBuilder {
   void readNormalClass(Class node) {
     int flags = readByte();
     node.isAbstract = flags & 0x1 != 0;
+    node.level = _currentLibrary.isExternal
+        ? (flags & 0x2 != 0) ? ClassLevel.Type : ClassLevel.Hierarchy
+        : ClassLevel.Body;
     node.name = readStringOrNullIfEmpty();
+    node.fileUri = readUriReference();
     node.annotations = readAnnotationList(node);
     debugPath.add(node.name ?? 'normal-class');
     readAndPushTypeParameterList(node.typeParameters, node);
@@ -361,7 +347,11 @@ class BinaryBuilder {
   void readMixinClass(Class node) {
     int flags = readByte();
     node.isAbstract = flags & 0x1 != 0;
+    node.level = _currentLibrary.isExternal
+        ? (flags & 0x2 != 0) ? ClassLevel.Type : ClassLevel.Hierarchy
+        : ClassLevel.Body;
     node.name = readStringOrNullIfEmpty();
+    node.fileUri = readUriReference();
     node.annotations = readAnnotationList(node);
     debugPath.add(node.name ?? 'mixin-class');
     readAndPushTypeParameterList(node.typeParameters, node);
@@ -391,8 +381,10 @@ class BinaryBuilder {
     // is unused, but we pass it in to clarify that the tag has already been
     // consumed from the input.
     assert(tag == Tag.Field);
+    node.fileOffset = readOffset();
     node.flags = readByte();
     node.name = readName();
+    node.fileUri = readUriReference();
     node.annotations = readAnnotationList(node);
     debugPath.add(node.name?.name ?? 'field');
     node.type = readDartType();
@@ -424,6 +416,7 @@ class BinaryBuilder {
     node.kind = ProcedureKind.values[kindIndex];
     node.flags = readByte();
     node.name = readName();
+    node.fileUri = readUriReference();
     node.annotations = readAnnotationList(node);
     debugPath.add(node.name?.name ?? 'procedure');
     node.function = readFunctionNodeOption();
@@ -503,8 +496,6 @@ class BinaryBuilder {
         return '&&';
       case 1:
         return '||';
-      case 2:
-        return '??';
       default:
         throw fail('Invalid logical operator index: $index');
     }
@@ -537,11 +528,14 @@ class BinaryBuilder {
         int index = tagByte & Tag.SpecializedPayloadMask;
         return new VariableSet(variableStack[index], readExpression());
       case Tag.PropertyGet:
+        int offset = readOffset();
         return new PropertyGet(
-            readExpression(), readName(), readMemberReference(allowNull: true));
+            readExpression(), readName(), readMemberReference(allowNull: true))
+          ..fileOffset = offset;
       case Tag.PropertySet:
+        int offset = readOffset();
         return new PropertySet(readExpression(), readName(), readExpression(),
-            readMemberReference(allowNull: true));
+            readMemberReference(allowNull: true))..fileOffset = offset;
       case Tag.SuperPropertyGet:
         addTransformerFlag(TransformerFlag.superCalls);
         return new SuperPropertyGet(
@@ -556,39 +550,48 @@ class BinaryBuilder {
         return new DirectPropertySet(
             readExpression(), readMemberReference(), readExpression());
       case Tag.StaticGet:
-        return new StaticGet(readMemberReference());
+        int offset = readOffset();
+        return new StaticGet(readMemberReference())
+          ..fileOffset = offset;
       case Tag.StaticSet:
         return new StaticSet(readMemberReference(), readExpression());
       case Tag.MethodInvocation:
-        return new MethodInvocation(readExpression(), readName(),
-            readArguments(), readMemberReference(allowNull: true));
+        int offset = readOffset();
+        return new MethodInvocation(
+            readExpression(),
+            readName(),
+            readArguments(),
+            readMemberReference(allowNull: true))..fileOffset = offset;
       case Tag.SuperMethodInvocation:
+        int offset = readOffset();
         addTransformerFlag(TransformerFlag.superCalls);
         return new SuperMethodInvocation(
-            readName(), readArguments(), readMemberReference(allowNull: true));
+            readName(), readArguments(), readMemberReference(allowNull: true))
+          ..fileOffset = offset;
       case Tag.DirectMethodInvocation:
         return new DirectMethodInvocation(
             readExpression(), readMemberReference(), readArguments());
       case Tag.StaticInvocation:
+        int offset = readOffset();
         return new StaticInvocation(readMemberReference(), readArguments(),
-            isConst: false);
+            isConst: false)..fileOffset = offset;
       case Tag.ConstStaticInvocation:
+        int offset = readOffset();
         return new StaticInvocation(readMemberReference(), readArguments(),
-            isConst: true);
+            isConst: true)..fileOffset = offset;
       case Tag.ConstructorInvocation:
+        int offset = readOffset();
         return new ConstructorInvocation(readMemberReference(), readArguments(),
-            isConst: false);
+            isConst: false)..fileOffset = offset;
       case Tag.ConstConstructorInvocation:
+        int offset = readOffset();
         return new ConstructorInvocation(readMemberReference(), readArguments(),
-            isConst: true);
+            isConst: true)..fileOffset = offset;
       case Tag.Not:
         return new Not(readExpression());
       case Tag.LogicalExpression:
-        return new LogicalExpression(
-            readExpression(),
-            logicalOperatorToString(readByte()),
-            readExpression(),
-            readDartTypeOption());
+        return new LogicalExpression(readExpression(),
+            logicalOperatorToString(readByte()), readExpression());
       case Tag.ConditionalExpression:
         return new ConditionalExpression(readExpression(), readExpression(),
             readExpression(), readDartTypeOption());
@@ -626,7 +629,8 @@ class BinaryBuilder {
       case Tag.Rethrow:
         return new Rethrow();
       case Tag.Throw:
-        return new Throw(readExpression());
+        int offset = readOffset();
+        return new Throw(readExpression())..fileOffset = offset;
       case Tag.ListLiteral:
         var typeArgument = readDartType();
         return new ListLiteral(readExpressionList(),
@@ -916,5 +920,11 @@ class BinaryBuilder {
         initializer: readExpressionOption(),
         isFinal: flags & 0x1 != 0,
         isConst: flags & 0x2 != 0);
+  }
+
+  int readOffset() {
+    // Offset is saved as unsigned,
+    // but actually ranges from -1 and up (thus the -1)
+    return readUInt() - 1;
   }
 }

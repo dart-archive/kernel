@@ -56,6 +56,26 @@ type StringReference {
   UInt index; // Index into the StringTable.
 }
 
+type LineStarts {
+  UInt lineCount;
+  // Delta encoded, e.g. 0, 10, 15, 7, 10 means 0, 10, 25, 32, 42.
+  UInt[lineCount] lineStarts;
+}
+
+type UriLineStarts {
+  StringTable uris;
+  LineStarts[uris.num_strings] lineStarts;
+}
+
+type UriReference {
+  UInt index; // Index into the URIs StringTable.
+}
+
+type FileOffset {
+  // Saved as number+1 to accommodate literal "-1".
+  UInt fileOffset;
+}
+
 type List<T> {
   UInt length;
   T[length] items;
@@ -72,25 +92,12 @@ type Something<T> extends Option<T> {
   T value;
 }
 
-type LibraryFile {
-  MagicWord magic = 0x12345678;
-  StringTable strings;
-  ImportTable imports;
-  Library library;
-}
-
 type ProgramFile {
   MagicWord magic = 0x90ABCDEF;
   StringTable strings;
+  UriLineStarts lineStartsMap;
   List<Library> library;
   LibraryProcedureReference mainMethod;
-}
-
-type ImportTable {
-  // Relative paths to files containing other libraries.
-  // The first entry is always an empty string. Index 0 is used to refer to
-  // the library itself.
-  List<String> importPaths;
 }
 
 type LibraryReference {
@@ -160,10 +167,13 @@ type Name {
 }
 
 type Library {
+  Byte flags (isExternal);
   StringReference name;
   // A URI with the dart, package, or file scheme.  For file URIs, the path
   // is an absolute path to the .dart file from which the library was created.
   StringReference importUri;
+  // An absolute path URI to the .dart file from which the library was created.
+  UriReference fileUri;
   List<Class> classes;
   List<Field> fields;
   List<Procedure> procedures;
@@ -173,12 +183,22 @@ abstract type Node {
   Byte tag;
 }
 
+// A class can be represented at one of three levels: type, hierarchy, or body.
+//
+// If the enclosing library is external, a class is either at type or
+// hierarchy level, depending on its isTypeLevel flag.
+// If the enclosing library is not external, a class is always at body level.
+//
+// See ClassLevel in ast.dart for the details of each loading level.
+
 abstract type Class extends Node {}
 
 type NormalClass extends Class {
   Byte tag = 2;
-  Byte flags (isAbstract);
+  Byte flags (isAbstract, isTypeLevel);
   StringReference name;
+  // An absolute path URI to the .dart file from which the class was created.
+  UriReference fileUri;
   List<Expression> annotations;
   List<TypeParameter> typeParameters;
   Option<InterfaceType> superClass;
@@ -190,8 +210,10 @@ type NormalClass extends Class {
 
 type MixinClass extends Class {
   Byte tag = 3;
-  Byte flags (isAbstract);
+  Byte flags (isAbstract, isTypeLevel);
   StringReference name;
+  // An absolute path URI to the .dart file from which the class was created.
+  UriReference fileUri;
   List<Expression> annotations;
   List<TypeParameter> typeParameters;
   InterfaceType firstSuperClass;
@@ -204,8 +226,11 @@ abstract type Member extends Node {}
 
 type Field extends Member {
   Byte tag = 4;
+  FileOffset fileOffset;
   Byte flags (isFinal, isConst, isStatic);
   Name name;
+  // An absolute path URI to the .dart file from which the field was created.
+  UriReference fileUri;
   List<Expression> annotations;
   DartType type;
   Option<InferredValue> inferredValue;
@@ -236,6 +261,8 @@ type Procedure extends Member {
   Byte kind; // Index into the ProcedureKind enum above.
   Byte flags (isStatic, isAbstract, isExternal, isConst);
   Name name;
+  // An absolute path URI to the .dart file from which the class was created.
+  UriReference fileUri;
   List<Expression> annotations;
   // Can only be absent if abstract, but tag is there anyway.
   Option<FunctionNode> function;
@@ -344,6 +371,7 @@ type SpecializedVariableSet extends Expression {
 
 type PropertyGet extends Expression {
   Byte tag = 22;
+  FileOffset fileOffset;
   Expression receiver;
   Name name;
   MemberReference interfaceTarget; // May be NullReference.
@@ -351,6 +379,7 @@ type PropertyGet extends Expression {
 
 type PropertySet extends Expression {
   Byte tag = 23;
+  FileOffset fileOffset;
   Expression receiver;
   Name name;
   Expression value;
@@ -385,6 +414,7 @@ type DirectPropertySet extends Expression {
 
 type StaticGet extends Expression {
   Byte tag = 26;
+  FileOffset fileOffset;
   MemberReference target;
 }
 
@@ -409,6 +439,7 @@ type NamedExpression {
 
 type MethodInvocation extends Expression {
   Byte tag = 28;
+  FileOffset fileOffset;
   Expression receiver;
   Name name;
   Arguments arguments;
@@ -417,6 +448,7 @@ type MethodInvocation extends Expression {
 
 type SuperMethodInvocation extends Expression {
   Byte tag = 29;
+  FileOffset fileOffset;
   Name name;
   Arguments arguments;
   MemberReference interfaceTarget; // May be NullReference.
@@ -431,6 +463,7 @@ type DirectMethodInvocation extends Expression {
 
 type StaticInvocation extends Expression {
   Byte tag = 30;
+  FileOffset fileOffset;
   MemberReference target;
   Arguments arguments;
 }
@@ -438,18 +471,21 @@ type StaticInvocation extends Expression {
 // Constant call to an external constant factory.
 type ConstStaticInvocation extends Expression {
   Byte tag = 18; // Note: tag is out of order.
+  FileOffset fileOffset;
   MemberReference target;
   Arguments arguments;
 }
 
 type ConstructorInvocation extends Expression {
   Byte tag = 31;
+  FileOffset fileOffset;
   ConstructorReference target;
   Arguments arguments;
 }
 
 type ConstConstructorInvocation extends Expression {
   Byte tag = 32;
+  FileOffset fileOffset;
   ConstructorReference target;
   Arguments arguments;
 }
@@ -460,7 +496,7 @@ type Not extends Expression {
 }
 
 /*
- enum LogicalOperator { &&, ||, ?? }
+ enum LogicalOperator { &&, || }
 */
 
 type LogicalExpression extends Expression {
@@ -558,6 +594,7 @@ type Rethrow extends Expression {
 
 type Throw extends Expression {
   Byte tag = 48;
+  FileOffset fileOffset;
   Expression value;
 }
 

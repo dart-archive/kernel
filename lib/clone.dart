@@ -30,9 +30,14 @@ class CloneVisitor extends TreeVisitor {
     throw 'Cloning of classes is not implemented';
   }
 
-  TreeNode clone(TreeNode node) => node.accept(this);
+  TreeNode clone(TreeNode node) =>
+      node.accept(this)..fileOffset = node.fileOffset;
 
-  TreeNode cloneOptional(TreeNode node) => node?.accept(this);
+  TreeNode cloneOptional(TreeNode node) {
+    TreeNode result = node?.accept(this);
+    if (result != null) result.fileOffset = node.fileOffset;
+    return result;
+  }
 
   DartType visitType(DartType type) {
     return substitute(type, typeSubstitution);
@@ -117,8 +122,8 @@ class CloneVisitor extends TreeVisitor {
   }
 
   visitLogicalExpression(LogicalExpression node) {
-    return new LogicalExpression(clone(node.left), node.operator,
-        clone(node.right), visitOptionalType(node.staticType));
+    return new LogicalExpression(
+        clone(node.left), node.operator, clone(node.right));
   }
 
   visitConditionalExpression(ConditionalExpression node) {
@@ -336,7 +341,8 @@ class CloneVisitor extends TreeVisitor {
         isStatic: node.isStatic,
         isExternal: node.isExternal,
         isConst: node.isConst,
-        transformerFlags: node.transformerFlags);
+        transformerFlags: node.transformerFlags,
+        fileUri: node.fileUri);
   }
 
   visitField(Field node) {
@@ -346,7 +352,10 @@ class CloneVisitor extends TreeVisitor {
         isFinal: node.isFinal,
         isConst: node.isConst,
         isStatic: node.isStatic,
-        transformerFlags: node.transformerFlags);
+        hasImplicitGetter: node.hasImplicitGetter,
+        hasImplicitSetter: node.hasImplicitSetter,
+        transformerFlags: node.transformerFlags,
+        fileUri: node.fileUri);
   }
 
   visitTypeParameter(TypeParameter node) {

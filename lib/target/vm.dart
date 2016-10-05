@@ -7,6 +7,8 @@ import 'targets.dart';
 import '../ast.dart';
 import '../transformations/mixin_full_resolution.dart' as mix;
 import '../transformations/continuation.dart' as cont;
+import '../transformations/erasure.dart';
+import '../transformations/setup_builtin_library.dart' as setup_builtin_library;
 
 /// Specializes the kernel IR to the Dart VM.
 class VmTarget extends Target {
@@ -14,30 +16,43 @@ class VmTarget extends Target {
 
   VmTarget(this.flags);
 
+  bool get strongMode => flags.strongMode;
+
   String get name => 'vm';
 
   // This is the order that bootstrap libraries are loaded according to
   // `runtime/vm/object_store.h`.
   List<String> get extraRequiredLibraries => const <String>[
-    'dart:async',
-    'dart:collection',
-    'dart:convert',
-    'dart:developer',
-    'dart:_internal',
-    'dart:isolate',
-    'dart:math',
+        'dart:async',
+        'dart:collection',
+        'dart:convert',
+        'dart:developer',
+        'dart:_internal',
+        'dart:isolate',
+        'dart:math',
 
-    // The library dart:mirrors may be ignored by the VM, e.g. when built in
-    // PRODUCT mode.
-    'dart:mirrors',
+        // The library dart:mirrors may be ignored by the VM, e.g. when built in
+        // PRODUCT mode.
+        'dart:mirrors',
 
-    'dart:profiler',
-    'dart:typed_data',
-    'dart:_vmservice',
-  ];
+        'dart:profiler',
+        'dart:typed_data',
+        'dart:vmservice_io',
+        'dart:_vmservice',
+        'dart:_builtin',
+        'dart:nativewrappers',
+        'dart:io',
+      ];
 
   void transformProgram(Program program) {
     new mix.MixinFullResolution().transform(program);
     cont.transformProgram(program);
+
+    // Repair `_getMainClosure()` function in dart:_builtin.
+    setup_builtin_library.transformProgram(program);
+
+    if (strongMode) {
+      new Erasure().transform(program);
+    }
   }
 }

@@ -8,7 +8,6 @@ import 'dart:io';
 
 import 'batch_util.dart';
 
-import 'package:analyzer/src/generated/engine.dart';
 import 'package:args/args.dart';
 import 'package:kernel/analyzer/loader.dart';
 import 'package:kernel/checks.dart';
@@ -16,7 +15,6 @@ import 'package:kernel/kernel.dart';
 import 'package:kernel/log.dart';
 import 'package:kernel/target/targets.dart';
 import 'package:path/path.dart' as path;
-import 'package:analyzer/src/generated/sdk.dart';
 
 // Returns the path to the current sdk based on `Platform.resolvedExecutable`.
 String currentSdk() {
@@ -35,10 +33,9 @@ ArgParser parser = new ArgParser(allowTrailingOptions: true)
       help: 'Output file.\n'
           '(defaults to "out.dill" if format is "bin", otherwise stdout)')
   ..addOption('sdk', defaultsTo: currentSdk(), help: 'Path to the Dart SDK.')
-  ..addOption('package-root',
-      abbr: 'p',
-      help: 'Path to the packages folder.\n'
-          'The .packages file is not yet supported.')
+  ..addOption('packages',
+      abbr: 'p', help: 'Path to the .packages file or packages folder.')
+  ..addOption('package-root', help: 'Deprecated alias for --packages')
   ..addOption('target',
       abbr: 't',
       help: 'Tailor the IR to the given target.',
@@ -50,6 +47,9 @@ ArgParser parser = new ArgParser(allowTrailingOptions: true)
           'unstable and not well integrated yet.')
   ..addFlag('link', abbr: 'l', help: 'Link the whole program into one file.')
   ..addFlag('no-output', negatable: false, help: 'Do not output any files.')
+  ..addOption('url-mapping',
+      allowMultiple: true,
+      help: 'A custom url mapping of the form `<scheme>:<name>::<uri>`.')
   ..addFlag('verbose',
       abbr: 'v',
       negatable: false,
@@ -61,7 +61,15 @@ ArgParser parser = new ArgParser(allowTrailingOptions: true)
   ..addFlag('sanity-check', help: 'Perform slow internal correctness checks.')
   ..addFlag('tolerant',
       help: 'Generate kernel even if there are compile-time errors.',
-      defaultsTo: false);
+      defaultsTo: false)
+  ..addOption('D',
+      abbr: 'D',
+      allowMultiple: true,
+      help: 'Define an environment variable.',
+      hide: true)
+  ..addFlag('show-external',
+      help: 'When printing a library as text, also print its dependencies\n'
+          'on external libraries.');
 
 String getUsage() => """
 Usage: dartk [options] FILE
@@ -76,6 +84,8 @@ Examples:
 
 Options:
 ${parser.usage}
+
+    -D<name>=<value>        Define an environment variable.
 """;
 
 dynamic fail(String message) {
@@ -110,10 +120,7 @@ void checkIsDirectoryOrNull(String path, String option) {
     case FileSystemEntityType.NOT_FOUND:
       throw fail('$option not found: $path');
     default:
-      if (path.endsWith('.packages')) {
-        throw fail('The .packages file is not supported yet.');
-      }
-      throw fail('$option is not a directory: $path');
+      fail('$option is not a directory: $path');
   }
 }
 
@@ -125,6 +132,14 @@ void checkIsFile(String path, {String option}) {
 
     case FileSystemEntityType.NOT_FOUND:
       throw fail('$option not found: $path');
+  }
+}
+
+void checkIsFileOrDirectoryOrNull(String path, String option) {
+  if (path == null) return;
+  var stat = new File(path).statSync();
+  if (stat.type == FileSystemEntityType.NOT_FOUND) {
+    fail('$option not found: $path');
   }
 }
 
@@ -146,24 +161,41 @@ void dumpString(String value, [String filename]) {
   }
 }
 
+Map<Uri, Uri> parseCustomUriMappings(List<String> mappings) {
+  Map<Uri, Uri> customUriMappings = <Uri, Uri>{};
+
+  fatal(String mapping) {
+    fail('Invalid uri mapping "$mapping". Each mapping should have the '
+        'form "<scheme>:<name>::<uri>".');
+  }
+
+  // Each mapping has the form <uri>::<uri>.
+  for (var mapping in mappings) {
+    List<String> parts = mapping.split('::');
+    if (parts.length != 2) {
+      fatal(mapping);
+    }
+    Uri fromUri = Uri.parse(parts[0]);
+    if (fromUri.scheme == '' || fromUri.path.contains('/')) {
+      fatal(mapping);
+    }
+    Uri toUri = Uri.parse(parts[1]);
+    if (toUri.scheme == '') {
+      toUri = new Uri.file(path.absolute(parts[1]));
+    }
+    customUriMappings[fromUri] = toUri;
+  }
+
+  return customUriMappings;
+}
+
 /// Maintains state that should be shared between batched executions when
 /// running in batch mode (for testing purposes).
 ///
 /// This reuses the analyzer's in-memory copy of the Dart SDK between runs.
 class BatchModeState {
-  DartSdk dartSdk;
-  String sdk;
-  bool strongMode;
-
-  AnalysisContext getContext(
-      String sdk_, String packageRoot_, bool strongMode_) {
-    if (dartSdk == null || this.sdk != sdk_ || this.strongMode != strongMode_) {
-      this.sdk = sdk_;
-      this.strongMode = strongMode_;
-      dartSdk = createDartSdk(sdk_, strongMode_);
-    }
-    return createContext(sdk_, packageRoot_, strongMode_, dartSdk: dartSdk);
-  }
+  bool isBatchMode = false;
+  DartLoaderBatch batch = new DartLoaderBatch();
 }
 
 main(List<String> args) async {
@@ -171,7 +203,7 @@ main(List<String> args) async {
     if (args.length != 1) {
       return fail('--batch cannot be used with other arguments');
     }
-    var batchModeState = new BatchModeState();
+    var batchModeState = new BatchModeState()..isBatchMode = true;
     await runBatch((args) => batchMain(args, batchModeState));
   } else {
     CompilerOutcome outcome = await batchMain(args, new BatchModeState());
@@ -208,7 +240,9 @@ Future<CompilerOutcome> batchMain(
   }
 
   checkIsDirectoryOrNull(options['sdk'], 'Dart SDK');
-  checkIsDirectoryOrNull(options['package-root'], 'Package root');
+
+  String packagePath = options['packages'] ?? options['package-root'];
+  checkIsFileOrDirectoryOrNull(packagePath, 'Package root or .packages');
 
   // Set up logging.
   if (options['verbose']) {
@@ -229,10 +263,9 @@ Future<CompilerOutcome> batchMain(
   String outputFile = options['out'] ?? defaultOutput();
   bool strongMode = options['strong'];
 
-  var repository =
-      new Repository(sdk: options['sdk'], packageRoot: options['package-root']);
+  var customUriMappings = parseCustomUriMappings(options['url-mapping']);
+  var repository = new Repository();
 
-  Library library;
   Program program;
 
   var watch = new Stopwatch()..start();
@@ -242,20 +275,38 @@ Future<CompilerOutcome> batchMain(
   TargetFlags targetFlags = new TargetFlags(strongMode: strongMode);
   Target target = getTarget(options['target'], targetFlags);
 
+  var declaredVariables = <String, String>{};
+  declaredVariables.addAll(target.extraDeclaredVariables);
+  for (String define in options['D']) {
+    int separator = define.indexOf('=');
+    if (separator == -1) {
+      fail('Invalid define: -D$define. Format is -D<name>=<value>');
+    }
+    String name = define.substring(0, separator);
+    String value = define.substring(separator + 1);
+    declaredVariables[name] = value;
+  }
+
   if (file.endsWith('.dill')) {
-    var node = loadProgramOrLibraryFromBinary(file, repository);
-    library = node is Library ? node : null;
-    program = node is Program ? node : null;
+    program = loadProgramFromBinary(file, repository);
     getLoadedFiles = () => [file];
   } else {
-    AnalysisContext context = batchModeState.getContext(
-        repository.sdk, repository.packageRoot, strongMode);
-    AnalyzerLoader loader = new AnalyzerLoader(repository, context: context);
+    DartOptions dartOptions = new DartOptions(
+        strongMode: strongMode,
+        sdk: options['sdk'],
+        packagePath: packagePath,
+        customUriMappings: customUriMappings,
+        declaredVariables: declaredVariables);
+    String packageDiscoveryPath = batchModeState.isBatchMode ? null : file;
+    DartLoader loader = await batchModeState.batch.getLoader(
+        repository, dartOptions,
+        packageDiscoveryPath: packageDiscoveryPath);
     if (options['link']) {
       program = loader.loadProgram(file, target: target);
     } else {
-      library = loader.loadLibrary(file);
-      loader.loadEverything();
+      var library = loader.loadLibrary(file);
+      assert(library == repository.getLibrary(file));
+      program = new Program(repository.libraries);
     }
     errors = loader.errors;
     if (errors.isNotEmpty) {
@@ -278,7 +329,7 @@ Future<CompilerOutcome> batchMain(
 
   void sanityCheck() {
     if (options['sanity-check']) {
-      CheckParentPointers.check(program ?? library);
+      runSanityChecks(program);
     }
   }
 
@@ -289,13 +340,8 @@ Future<CompilerOutcome> batchMain(
     new File(outputDependencies).writeAsStringSync(getLoadedFiles().join('\n'));
   }
 
-  assert(program != null || library != null);
-  assert(library == null ||
-      program == null ||
-      program.libraries.contains(library));
-
   // Apply target-specific transformations.
-  if (target != null && program != null && canContinueCompilation) {
+  if (target != null && options['link'] && canContinueCompilation) {
     target.transformProgram(program);
     sanityCheck();
   }
@@ -310,18 +356,11 @@ Future<CompilerOutcome> batchMain(
   if (canContinueCompilation) {
     switch (format) {
       case 'text':
-        if (program != null) {
-          writeProgramToText(program, outputFile);
-        } else {
-          writeLibraryToText(library, outputFile);
-        }
+        writeProgramToText(program,
+            path: outputFile, showExternal: options['show-external']);
         break;
       case 'bin':
-        if (program != null) {
-          ioFuture = writeProgramToBinary(program, outputFile);
-        } else {
-          ioFuture = writeLibraryToBinary(library, outputFile);
-        }
+        ioFuture = writeProgramToBinary(program, outputFile);
         break;
     }
   }

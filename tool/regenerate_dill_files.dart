@@ -6,9 +6,8 @@ import 'dart:io';
 import 'package:args/args.dart';
 import 'package:path/path.dart' as path;
 import 'package:kernel/kernel.dart';
-import 'package:kernel/target/vm.dart';
-import '../bin/dartk.dart' as cmd;
-import 'package:kernel/target/targets.dart';
+import 'package:kernel/analyzer/loader.dart';
+import 'dart:async';
 
 ArgParser parser = new ArgParser()
   ..addOption('sdk', help: 'Path to the SDK checkout');
@@ -19,17 +18,25 @@ Usage: regenerate_dill_files --sdk <path to SDK checkout>
 Recompiles all the .dill files that are under version control.
 """;
 
-void compile(
-    {String dartFile,
+DartLoaderBatch batch = new DartLoaderBatch();
+
+Future compile({String dartFile,
+    String sdk,
     String packageRoot,
     String output,
-    bool strongMode: false}) {
+    bool strongMode: false}) async {
+  var settings = new DartOptions(strongMode: strongMode,
+      sdk: sdk,
+      packagePath: packageRoot);
   String strongMessage = strongMode ? '(strong mode)' : '';
+  if (!new Directory(settings.sdk).existsSync()) {
+    print('SDK not found: ${settings.sdk}');
+    exit(1);
+  }
   print('Compiling $dartFile $strongMessage');
-  var repo = new Repository(sdk: cmd.currentSdk(), packageRoot: packageRoot);
-  var program = loadProgramFromDart(dartFile, repo, strongMode: strongMode);
-  new VmTarget(new TargetFlags(strongMode: strongMode))
-      .transformProgram(program);
+  var repo = new Repository();
+  var loader = await batch.getLoader(repo, settings);
+  var program = loader.loadProgram(dartFile);
   writeProgramToBinary(program, output);
 }
 
@@ -70,28 +77,22 @@ main(List<String> args) async {
   Directory.current = baseDir;
 
   // Compile files in test/data
+  String sdkRoot = getNewestBuildDir(sdk) + '/obj/gen/patched_sdk';
   String packageRoot = getNewestBuildDir(sdk) + '/packages';
   String dart2js = '$sdk/pkg/compiler/lib/src/dart2js.dart';
-  compile(
+  await compile(
+      sdk: sdkRoot,
       dartFile: dart2js,
       packageRoot: packageRoot,
       output: 'test/data/dart2js.dill');
-  compile(
+  await compile(
+      sdk: sdkRoot,
       strongMode: true,
       dartFile: dart2js,
       packageRoot: packageRoot,
       output: 'test/data/dart2js-strong.dill');
-  compile(dartFile: 'test/data/boms.dart', output: 'test/data/boms.dill');
-
-  // Compile type propagation test cases.
-  for (var entity
-      in new Directory('test/type_propagation/testcases').listSync()) {
-    if (entity.path.endsWith('.dart')) {
-      String name = path.basename(entity.path);
-      name = name.substring(0, name.length - '.dart'.length);
-      compile(
-          dartFile: entity.path,
-          output: 'test/type_propagation/binary/$name.dill');
-    }
-  }
+  await compile(
+      sdk: sdkRoot,
+      dartFile: 'test/data/boms.dart',
+      output: 'test/data/boms.dill');
 }
