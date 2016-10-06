@@ -426,9 +426,18 @@ class ClosureConverter extends Transformer with DartTypeVisitor<DartType> {
   }
 
   TreeNode visitLibrary(Library node) {
-    if (node.importUri.scheme == "dart") {
-      // TODO(ahe): Enable transformation of dart: libraries.
-      return node;
+    switch ("${node.importUri}") {
+      case "dart:_internal":
+      case "dart:_vmservice":
+      case "dart:async":
+      case "dart:collection":
+      case "dart:convert":
+      case "dart:core":
+      case "dart:developer":
+      case "dart:isolate":
+      case "dart:mirrors":
+        // TODO(ahe): Enable transformation of the above libraries.
+        return node;
     }
     currentLibrary = node;
     return super.visitLibrary(node);
