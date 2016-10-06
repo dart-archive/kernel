@@ -13,21 +13,16 @@ import 'dart:io' show
     IOSink,
     Platform;
 
-import 'package:analyzer/src/generated/engine.dart' show
-    AnalysisContext;
-
 import 'package:analyzer/src/generated/sdk.dart' show
     DartSdk;
 
 import 'package:kernel/analyzer/loader.dart' show
-    AnalyzerLoader,
+    DartLoader,
+    DartOptions,
     createDartSdk;
 
-import 'package:kernel/analyzer/loader.dart' as loader show
-    createContext;
-
 import 'package:kernel/kernel.dart' show
-    Repository;
+    loadProgramFromBinary;
 
 import 'package:kernel/target/targets.dart' show
     Target,
@@ -39,9 +34,6 @@ import 'package:kernel/text/ast_to_text.dart' show
 
 import 'package:kernel/repository.dart' show
     Repository;
-
-import 'package:kernel/binary/loader.dart' show
-    BinaryLoader;
 
 import 'package:testing/testing.dart' show
     Chain,
@@ -56,7 +48,7 @@ import 'package:kernel/ast.dart' show
     Program;
 
 import 'package:kernel/checks.dart' show
-    CheckParentPointers;
+    runSanityChecks;
 
 import 'package:kernel/transformations/closure_conversion.dart' as
     closure_conversion;
@@ -64,17 +56,18 @@ import 'package:kernel/transformations/closure_conversion.dart' as
 import 'package:kernel/binary/ast_to_binary.dart' show
     BinaryPrinter;
 
+import 'package:package_config/discovery.dart' show
+    loadPackagesFile;
+
 const bool generateExpectations =
     const bool.fromEnvironment("generateExpectations");
 
 class TestContext extends ChainContext {
-  final String sdk;
-
   final Uri vm;
 
-  final String packageRoot;
+  final Uri packages;
 
-  final bool strongMode;
+  final DartOptions options;
 
   final DartSdk dartSdk;
 
@@ -89,11 +82,16 @@ class TestContext extends ChainContext {
       const Run(),
   ];
 
-  TestContext(this.sdk, this.vm, this.packageRoot, this.strongMode,
-      this.dartSdk);
+  TestContext(String sdk, this.vm, Uri packages, bool strongMode,
+      this.dartSdk)
+      : packages = packages,
+        options = new DartOptions(strongMode: strongMode, sdk: sdk,
+            packagePath: packages.toFilePath());
 
-  AnalysisContext createAnalysisContext() {
-    return loader.createContext(sdk, packageRoot, strongMode, dartSdk: dartSdk);
+  Future<DartLoader> createLoader() async {
+    Repository repository = new Repository();
+    return new DartLoader(repository, options, await loadPackagesFile(packages),
+        dartSdk: dartSdk);
   }
 }
 
@@ -152,10 +150,10 @@ Future<TestContext> createContext(Chain suite) async {
           "Dart VM that reads .dill files.");
   Uri vm = Uri.base.resolve(vmPath);
 
-  String packageRoot = Uri.base.resolve("packages").toFilePath();
+  Uri packages = Uri.base.resolve(".packages");
   bool strongMode = false;
-  return new TestContext(
-      sdk, vm, packageRoot, strongMode, createDartSdk(sdk, strongMode));
+  return new TestContext(sdk, vm, packages, strongMode,
+      createDartSdk(sdk, strongMode: strongMode));
 }
 
 class Kernel extends Step<TestDescription, Program, TestContext> {
@@ -166,20 +164,16 @@ class Kernel extends Step<TestDescription, Program, TestContext> {
   Future<Result<Program>> run(
       TestDescription description, TestContext testContext) async {
     try {
-      Repository repository = new Repository(
-          sdk: testContext.sdk, packageRoot: testContext.packageRoot);
-      AnalysisContext context = testContext.createAnalysisContext();
-      AnalyzerLoader loader = new AnalyzerLoader(repository, context: context);
-      Target target =
-          getTarget("vm", new TargetFlags(strongMode: testContext.strongMode));
+      DartLoader loader = await testContext.createLoader();
+      Target target = getTarget(
+          "vm", new TargetFlags(strongMode: testContext.options.strongMode));
       Program program =
           loader.loadProgram(description.file.path, target: target);
       for (var error in loader.errors) {
         return new Result<Program>.fail(program, "$error");
       }
       target.transformProgram(program);
-      // TODO(ahe): Use `runSanityChecks` when merging with master.
-      CheckParentPointers.check(program);
+      runSanityChecks(program);
       return new Result<Program>.pass(program);
     } catch (e, s) {
       return new Result<Program>.crash(e, s);
@@ -209,7 +203,7 @@ class ClosureConversion extends Step<Program, Program, TestContext> {
   Future<Result<Program>> run(Program program, TestContext testContext) async {
     try {
       program = closure_conversion.transformProgram(program);
-      CheckParentPointers.check(program);
+      runSanityChecks(program);
       return new Result<Program>.pass(program);
     } catch (e, s) {
       return new Result<Program>.crash(e, s);
@@ -281,9 +275,8 @@ class ReadDill extends Step<Uri, Uri, TestContext> {
   String get name => "read .dill";
 
   Future<Result<Uri>> run(Uri uri, TestContext context) async {
-    Repository repository = new Repository();
     try {
-      new BinaryLoader(repository).loadProgramOrLibrary("$uri");
+      loadProgramFromBinary(uri.toFilePath());
     } catch (e, s) {
       return new Result<Uri>.fail(uri, e, s);
     }

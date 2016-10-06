@@ -5,7 +5,8 @@ import "dart:mock" as mock;
 
 class C<T, S> extends core::Object {
   constructor internal() → void
-    : super core::Object::•();
+    : super core::Object::•()
+    ;
   method foo(self::C::S s) → dynamic {
     return new self::Closure#0::•<self::C::T, self::C::S>(null);
   }
@@ -17,7 +18,7 @@ class C<T, S> extends core::Object {
     return local.call();
   }
 }
-class Closure#0<T, S> extends core::Object implements core::Function {
+class Closure#0<T, S> extends core::Object implements core::Function { // from null
   field core::String note = "This is temporary. The VM doesn't need closure classes.";
   field mock::Context context;
   constructor •(final mock::Context #t1) → dynamic
@@ -35,7 +36,7 @@ class Closure#0<T, S> extends core::Object implements core::Function {
     return z as self::Closure#0::T;
   }
 }
-class Closure#1<T, S> extends core::Object implements core::Function {
+class Closure#1<T, S> extends core::Object implements core::Function { // from null
   field core::String note = "This is temporary. The VM doesn't need closure classes.";
   field mock::Context context;
   constructor •(final mock::Context #t3) → dynamic

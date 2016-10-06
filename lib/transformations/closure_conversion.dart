@@ -23,7 +23,9 @@ import '../frontend/accessors.dart';
 ///         list[i] = value;
 ///       }
 ///     }
-CoreTypes mockUpContext(CoreTypes coreTypes, Program program) {
+///
+/// Returns the mock.
+Class mockUpContext(CoreTypes coreTypes, Program program) {
   ///     final List list;
   Field listField = new Field(
       new Name("list"), type: coreTypes.listClass.rawType, isFinal: true);
@@ -89,8 +91,7 @@ CoreTypes mockUpContext(CoreTypes coreTypes, Program program) {
       Uri.parse("dart:mock"), name: "mock", classes: [contextClass]);
   program.libraries.add(mock);
   mock.parent = program;
-  coreTypes.internalContextClass = contextClass;
-  return coreTypes;
+  return contextClass;
 }
 
 Program transformProgram(Program program) {
@@ -98,7 +99,8 @@ Program transformProgram(Program program) {
   captured.visitProgram(program);
 
   CoreTypes coreTypes = new CoreTypes(program);
-  var convert = new ClosureConverter(coreTypes, captured);
+  Class contextClass = mockUpContext(coreTypes, program);
+  var convert = new ClosureConverter(coreTypes, captured, contextClass);
   return convert.visitProgram(program);
 }
 
@@ -224,7 +226,7 @@ class LocalContext extends Context {
   LocalContext._internal(this.converter, this.parent, this.self, this.size);
 
   factory LocalContext(ClosureConverter converter, Context parent) {
-    Class contextClass = converter.coreTypes.internalContextClass;
+    Class contextClass = converter.contextClass;
     assert(contextClass.constructors.length == 1);
     IntLiteral zero = new IntLiteral(0);
     VariableDeclaration declaration =
@@ -362,6 +364,7 @@ class ClosureContext extends Context {
 
 class ClosureConverter extends Transformer with DartTypeVisitor<DartType> {
   final CoreTypes coreTypes;
+  final Class contextClass;
   final Set<VariableDeclaration> capturedVariables;
   final Map<FunctionNode, Set<TypeParameter>> capturedTypeVariables;
   final Queue<FunctionNode> enclosingGenericFunctions =
@@ -399,7 +402,8 @@ class ClosureConverter extends Transformer with DartTypeVisitor<DartType> {
   /// closure in `f`.
   Map<TypeParameter, TypeParameter> typeParameterMapping;
 
-  ClosureConverter(this.coreTypes, CapturedVariables captured)
+  ClosureConverter(
+      this.coreTypes, CapturedVariables captured, this.contextClass)
       : this.capturedVariables = captured.variables,
         this.capturedTypeVariables = captured.typeVariables;
 
@@ -422,6 +426,10 @@ class ClosureConverter extends Transformer with DartTypeVisitor<DartType> {
   }
 
   TreeNode visitLibrary(Library node) {
+    if (node.importUri.scheme == "dart") {
+      // TODO(ahe): Enable transformation of dart: libraries.
+      return node;
+    }
     currentLibrary = node;
     return super.visitLibrary(node);
   }
@@ -458,7 +466,7 @@ class ClosureConverter extends Transformer with DartTypeVisitor<DartType> {
     _insertionIndex = 0;
 
     VariableDeclaration contextVariable = new VariableDeclaration(null,
-        type: coreTypes.internalContextClass.rawType,
+        type: contextClass.rawType,
         isFinal: true);
     Context parent = context;
     context = context.toClosureContext(contextVariable);
@@ -564,13 +572,11 @@ class ClosureConverter extends Transformer with DartTypeVisitor<DartType> {
         new Field(new Name("note"), type: coreTypes.stringClass.rawType,
             initializer: new StringLiteral(
                 "This is temporary. The VM doesn't need closure classes.")));
-    Field contextField = new Field(new Name("context"),
-        type: coreTypes.internalContextClass.rawType);
+    Field contextField = new Field(
+        new Name("context"), type: contextClass.rawType);
     closureClass.addMember(contextField);
-    VariableDeclaration contextParameter =
-        new VariableDeclaration(null,
-            type: coreTypes.internalContextClass.rawType,
-            isFinal: true);
+    VariableDeclaration contextParameter = new VariableDeclaration(
+        null, type: contextClass.rawType, isFinal: true);
     Constructor constructor = new Constructor(
         new FunctionNode(new EmptyStatement(),
             positionalParameters: <VariableDeclaration>[contextParameter]),
