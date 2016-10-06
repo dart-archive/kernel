@@ -11,6 +11,7 @@ import '../ast.dart';
 import '../core_types.dart';
 import '../visitor.dart';
 import '../frontend/accessors.dart';
+import 'skip.dart';
 
 /// Extend the program with this mock:
 ///
@@ -426,24 +427,12 @@ class ClosureConverter extends Transformer with DartTypeVisitor<DartType> {
   }
 
   TreeNode visitLibrary(Library node) {
-    switch ("${node.importUri}") {
-      case "dart:_internal":
-      case "dart:_vmservice":
-      case "dart:async":
-      case "dart:collection":
-      case "dart:convert":
-      case "dart:core":
-      case "dart:developer":
-      case "dart:isolate":
-      case "dart:mirrors":
-        // TODO(ahe): Enable transformation of the above libraries.
-        return node;
-    }
     currentLibrary = node;
     return super.visitLibrary(node);
   }
 
   TreeNode visitClass(Class node) {
+    if (node.name.startsWith("Closure#")) return node;
     currentClass = node;
     TreeNode result = super.visitClass(node);
     currentClass = null;
@@ -618,6 +607,9 @@ class ClosureConverter extends Transformer with DartTypeVisitor<DartType> {
   }
 
   TreeNode visitProcedure(Procedure node) {
+    // TODO(ahe): Delete this check, eventually all procedures should be
+    // converted.
+    if (!convertClosures(node)) return node;
     assert(_currentBlock == null);
     assert(_insertionIndex == 0);
     assert(context == null);
