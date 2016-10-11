@@ -41,7 +41,8 @@ import 'package:testing/testing.dart' show
     Result,
     StdioProcess,
     Step,
-    TestDescription;
+    TestDescription,
+    runMe;
 
 import 'package:kernel/ast.dart' show
     Library,
@@ -74,8 +75,10 @@ class TestContext extends ChainContext {
   final List<Step> steps = const <Step>[
       const Kernel(),
       const Print(),
+      const SanityCheck(),
       const ClosureConversion(),
       const Print(),
+      const SanityCheck(),
       const MatchExpectation<TestContext>(".expect"),
       const WriteDill(),
       const ReadDill(),
@@ -173,7 +176,6 @@ class Kernel extends Step<TestDescription, Program, TestContext> {
         return new Result<Program>.fail(program, "$error");
       }
       target.transformProgram(program);
-      runSanityChecks(program);
       return new Result<Program>.pass(program);
     } catch (e, s) {
       return new Result<Program>.crash(e, s);
@@ -195,6 +197,21 @@ class Print extends Step<Program, Program, TestContext> {
   }
 }
 
+class SanityCheck extends Step<Program, Program, TestContext> {
+  const SanityCheck();
+
+  String get name => "sanity check";
+
+  Future<Result<Program>> run(Program program, TestContext testContext) async {
+    try {
+      runSanityChecks(program);
+      return new Result<Program>.pass(program);
+    } catch (e, s) {
+      return new Result<Program>.crash(e, s);
+    }
+  }
+}
+
 class ClosureConversion extends Step<Program, Program, TestContext> {
   const ClosureConversion();
 
@@ -203,7 +220,6 @@ class ClosureConversion extends Step<Program, Program, TestContext> {
   Future<Result<Program>> run(Program program, TestContext testContext) async {
     try {
       program = closure_conversion.transformProgram(program);
-      runSanityChecks(program);
       return new Result<Program>.pass(program);
     } catch (e, s) {
       return new Result<Program>.crash(e, s);
@@ -317,3 +333,5 @@ Future openWrite(Uri uri, f(IOSink sink)) async {
   }
   print("Wrote $uri");
 }
+
+main(List<String> arguments) => runMe(arguments, createContext, "testing.json");

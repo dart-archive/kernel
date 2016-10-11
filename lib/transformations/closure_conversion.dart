@@ -699,9 +699,14 @@ class ClosureConverter extends Transformer with DartTypeVisitor<DartType> {
     if (!capturedVariables.contains(node)) return node;
     context.extend(node, node.initializer ?? new NullLiteral());
 
-    // TODO(ahe): Return null here when the parent has been correctly
-    // rewritten. So far, only for-in is known to use this return value.
-    return new VariableDeclaration(null, initializer: new InvalidExpression());
+    if (node.parent == currentFunction) return node;
+    if (node.parent is Block) {
+      // When returning null, the parent block will remove this node from its
+      // list of statements.
+      // TODO(ahe): I'd like to avoid testing on the parent pointer.
+      return null;
+    }
+    throw "Unexpected parent for $node: ${node.parent.parent}";
   }
 
   TreeNode visitVariableGet(VariableGet node) {
@@ -751,5 +756,23 @@ class ClosureConverter extends Transformer with DartTypeVisitor<DartType> {
     } else {
       return node;
     }
+  }
+
+  TreeNode visitForStatement(ForStatement node) {
+    for (VariableDeclaration variable in node.variables) {
+      if (capturedVariables.contains(variable)) {
+        return new ExpressionStatement(
+            new Throw(new StringLiteral("for statement not implemented yet.")));
+      }
+    }
+    return super.visitForStatement(node);
+  }
+
+  TreeNode visitForInStatement(ForInStatement node) {
+    if (capturedVariables.contains(node.variable)) {
+      return new ExpressionStatement(new Throw(
+          new StringLiteral("for-in statement not implemented yet.")));
+    }
+    return super.visitForInStatement(node);
   }
 }
