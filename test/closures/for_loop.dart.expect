@@ -1,21 +1,40 @@
 library;
 import self as self;
 import "dart:core" as core;
+import "dart:mock" as mock;
 
+class Closure#0 extends core::Object implements core::Function { // from null
+  field core::String note = "This is temporary. The VM doesn't need closure classes.";
+  field mock::Context context;
+  constructor •(final mock::Context #t1) → dynamic
+    : self::Closure#0::context = #t1
+    ;
+  method call() → dynamic {
+    final mock::Context #t2 = |{
+                                  "This is a temporary solution. In the VM, this will become an additional parameter.";
+
+                                 => this.{self::Closure#0::context}
+                              }| ;
+    return #t2.[](0);
+  }
+}
 static const field core::int max = 100;
 static method main() → dynamic {
   dynamic closures = <dynamic>[];
-  try {
-    throw "for statement not implemented yet.";
-  }
-  on core::String catch(no-exception-var) {
+  for(core::int #t3 = 0; #t3.<(self::max); #t3 = #t3.+(1)) {
+    final mock::Context #t4 = new mock::Context::•(1);
+    #t4.parent = null;
+    #t4.[]=(0, #t3);
+    {
+      closures.add(new self::Closure#0::•(#t4));
+    }
+    #t3 = #t4.[](0);
   }
   core::int sum = 0;
   for(core::Function f in closures) {
     sum = sum.+(f.call());
   }
   core::int expectedSum = self::max.-(1).*(self::max).~/(2);
-  expectedSum = 0;
   if(!expectedSum.==(sum)) {
     throw core::Exception::•("Unexpected sum = ${sum} != ${expectedSum}");
   }

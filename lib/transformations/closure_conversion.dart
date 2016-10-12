@@ -758,21 +758,122 @@ class ClosureConverter extends Transformer with DartTypeVisitor<DartType> {
     }
   }
 
+  VariableDeclaration getReplacementLoopVariable(VariableDeclaration variable) {
+    VariableDeclaration newVariable = new VariableDeclaration(
+        null, initializer: variable.initializer, type: variable.type)
+        ..flags = variable.flags;
+    variable.initializer = new VariableGet(newVariable);
+    variable.initializer.parent = variable;
+    return newVariable;
+  }
+
   TreeNode visitForStatement(ForStatement node) {
-    for (VariableDeclaration variable in node.variables) {
-      if (capturedVariables.contains(variable)) {
-        return new ExpressionStatement(
-            new Throw(new StringLiteral("for statement not implemented yet.")));
+    if (node.variables.any(capturedVariables.contains)) {
+
+      // In Dart, loop variables are new variables on each iteration of the
+      // loop. This is only observable when a loop variable is captured by a
+      // closure, which is the situation we're in here. So we transform the
+      // loop.
+      //
+      // Consider the following example, where `x` is `node.variables.first`,
+      // and `#t1` is a temporary variable:
+      //
+      //     for (var x = 0; x < 10; x++) body;
+      //
+      // This is transformed to:
+      //
+      //     for (var #t1 = 0; #t1 < 10; #t1++) {
+      //       var x= #t1;
+      //       body;
+      //       #t1 = x;
+      //     }
+      //
+      // Notice that a Dart `continue` in a loop is translated to a `break`
+      // statement in Kernel. So if there was a `continue` statement in the
+      // Dart source of `body`, it would look something like this:
+      //
+      //     L: { ... break L; ... }
+      //
+      // Because of this, we know that `#t1` is updated after continue.
+      Substitution substitution = new Substitution();
+      for (VariableDeclaration variable in node.variables) {
+        substitution[variable] = getReplacementLoopVariable(variable);
       }
+      Expression condition = node.condition.accept(substitution);
+      List<Expression> updates = node.updates.map(substitution).toList();
+      List<Statement> statements = <Statement>[];
+      statements.addAll(node.variables);
+      statements.add(node.body);
+      for (VariableDeclaration variable in node.variables) {
+        statements.add(
+            new ExpressionStatement(
+                new VariableSet(
+                    substitution[variable], new VariableGet(variable))));
+      }
+      Statement body = new Block(statements);
+      node =
+          new ForStatement(substitution.newVariables, condition, updates, body);
     }
     return super.visitForStatement(node);
   }
 
   TreeNode visitForInStatement(ForInStatement node) {
     if (capturedVariables.contains(node.variable)) {
-      return new ExpressionStatement(new Throw(
-          new StringLiteral("for-in statement not implemented yet.")));
+      // In Dart, loop variables are new variables on each iteration of the
+      // loop. This is only observable when the loop variable is captured by a
+      // closure, so we need to transform the for-in loop when `node.variable`
+      // is captured.
+      //
+      // Consider the following example, where `x` is `node.variable`, and
+      // `#t1` is a temporary variable:
+      //
+      //     for (var x in expr) body;
+      //
+      // Notice that we can assume that `x` doesn't have an initializer based
+      // on invariants in the Kernel AST. This is transformed to:
+      //
+      //     for (var #t1 in expr) { var x = #t1; body; }
+      //
+      // After this, we call super to apply the normal closure conversion to
+      // the transformed for-in loop.
+      VariableDeclaration variable = node.variable;
+      VariableDeclaration newVariable = getReplacementLoopVariable(variable);
+      node.variable = newVariable;
+      newVariable.parent = node;
+      node.body = new Block(<Statement>[variable, node.body]);
+      node.body.parent = node;
     }
     return super.visitForInStatement(node);
+  }
+}
+
+class Substitution extends Transformer {
+  final Map<VariableDeclaration, VariableDeclaration> substitution =
+      <VariableDeclaration, VariableDeclaration>{};
+
+  List<VariableDeclaration> get newVariables => substitution.values.toList();
+
+  void operator[]= (VariableDeclaration key, VariableDeclaration value) {
+    substitution[key] = value;
+  }
+
+  VariableDeclaration operator[] (VariableDeclaration key) => substitution[key];
+
+  TreeNode call(Expression node) => node.accept(this);
+
+  TreeNode visitVariableGet(VariableGet node) {
+    VariableDeclaration newVariable = substitution[node.variable];
+    if (newVariable != null) {
+      node = new VariableGet(newVariable, node.promotedType);
+    }
+    return super.visitVariableGet(node);
+  }
+
+  TreeNode visitVariableSet(VariableSet node) {
+    VariableDeclaration newVariable = substitution[node.variable];
+    if (newVariable != null) {
+      node = new VariableSet(newVariable, node.value);
+    }
+    return super.visitVariableSet(node);
   }
 }
