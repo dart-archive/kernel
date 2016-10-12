@@ -767,9 +767,14 @@ class ClosureConverter extends Transformer with DartTypeVisitor<DartType> {
     return newVariable;
   }
 
+  TreeNode cloneContext(TreeNode node) {
+    // TODO(ahe): Implement this.
+    return new ExpressionStatement(
+        new Throw(new StringLiteral("Context refresh not implemented")));
+  }
+
   TreeNode visitForStatement(ForStatement node) {
     if (node.variables.any(capturedVariables.contains)) {
-
       // In Dart, loop variables are new variables on each iteration of the
       // loop. This is only observable when a loop variable is captured by a
       // closure, which is the situation we're in here. So we transform the
@@ -782,10 +787,12 @@ class ClosureConverter extends Transformer with DartTypeVisitor<DartType> {
       //
       // This is transformed to:
       //
-      //     for (var #t1 = 0; #t1 < 10; #t1++) {
-      //       var x= #t1;
-      //       body;
-      //       #t1 = x;
+      //     {
+      //       var x = 0;
+      //       for (; x < 10; x++) {
+      //         body;
+      //         clone-context;
+      //       }
       //     }
       //
       // Notice that a Dart `continue` in a loop is translated to a `break`
@@ -794,25 +801,15 @@ class ClosureConverter extends Transformer with DartTypeVisitor<DartType> {
       //
       //     L: { ... break L; ... }
       //
-      // Because of this, we know that `#t1` is updated after continue.
-      Substitution substitution = new Substitution();
-      for (VariableDeclaration variable in node.variables) {
-        substitution[variable] = getReplacementLoopVariable(variable);
-      }
-      Expression condition = node.condition.accept(substitution);
-      List<Expression> updates = node.updates.map(substitution).toList();
+      // Because of this, we know that `clone-context` is always evaluated
+      // before the next iteration of the loop.
       List<Statement> statements = <Statement>[];
       statements.addAll(node.variables);
-      statements.add(node.body);
-      for (VariableDeclaration variable in node.variables) {
-        statements.add(
-            new ExpressionStatement(
-                new VariableSet(
-                    substitution[variable], new VariableGet(variable))));
-      }
-      Statement body = new Block(statements);
-      node =
-          new ForStatement(substitution.newVariables, condition, updates, body);
+      statements.add(node);
+      node.variables.clear();
+      node.body = new Block(<Statement>[node.body, cloneContext(node)]);
+      node.body.parent = node;
+      return new Block(statements).accept(this);
     }
     return super.visitForStatement(node);
   }
