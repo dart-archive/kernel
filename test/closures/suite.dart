@@ -10,7 +10,6 @@ import 'dart:async' show
 import 'dart:io' show
     Directory,
     File,
-    IOSink,
     Platform;
 
 import 'package:analyzer/src/generated/sdk.dart' show
@@ -21,19 +20,20 @@ import 'package:kernel/analyzer/loader.dart' show
     DartOptions,
     createDartSdk;
 
-import 'package:kernel/kernel.dart' show
-    loadProgramFromBinary;
-
 import 'package:kernel/target/targets.dart' show
     Target,
     TargetFlags,
     getTarget;
 
-import 'package:kernel/text/ast_to_text.dart' show
-    Printer;
-
 import 'package:kernel/repository.dart' show
     Repository;
+
+import 'package:kernel/testing/kernel_chain.dart' show
+    MatchExpectation,
+    Print,
+    ReadDill,
+    SanityCheck,
+    WriteDill;
 
 import 'package:testing/testing.dart' show
     Chain,
@@ -45,23 +45,13 @@ import 'package:testing/testing.dart' show
     runMe;
 
 import 'package:kernel/ast.dart' show
-    Library,
     Program;
-
-import 'package:kernel/checks.dart' show
-    runSanityChecks;
 
 import 'package:kernel/transformations/closure_conversion.dart' as
     closure_conversion;
 
-import 'package:kernel/binary/ast_to_binary.dart' show
-    BinaryPrinter;
-
 import 'package:package_config/discovery.dart' show
     loadPackagesFile;
-
-const bool generateExpectations =
-    const bool.fromEnvironment("generateExpectations");
 
 class TestContext extends ChainContext {
   final Uri vm;
@@ -79,7 +69,7 @@ class TestContext extends ChainContext {
       const ClosureConversion(),
       const Print(),
       const SanityCheck(),
-      const MatchExpectation<TestContext>(".expect"),
+      const MatchExpectation(".expect"),
       const WriteDill(),
       const ReadDill(),
       const Run(),
@@ -173,41 +163,12 @@ class Kernel extends Step<TestDescription, Program, TestContext> {
       Program program =
           loader.loadProgram(description.file.path, target: target);
       for (var error in loader.errors) {
-        return new Result<Program>.fail(program, "$error");
+        return fail(program, "$error");
       }
       target.transformProgram(program);
-      return new Result<Program>.pass(program);
+      return pass(program);
     } catch (e, s) {
-      return new Result<Program>.crash(e, s);
-    }
-  }
-}
-
-class Print extends Step<Program, Program, TestContext> {
-  const Print();
-
-  String get name => "print";
-
-  Future<Result<Program>> run(Program program, TestContext testContext) async {
-    StringBuffer sb = new StringBuffer();
-    Printer printer = new Printer(sb);
-    printer.writeLibraryFile(program.mainMethod.enclosingLibrary);
-    print("$sb");
-    return new Result<Program>.pass(program);
-  }
-}
-
-class SanityCheck extends Step<Program, Program, TestContext> {
-  const SanityCheck();
-
-  String get name => "sanity check";
-
-  Future<Result<Program>> run(Program program, TestContext testContext) async {
-    try {
-      runSanityChecks(program);
-      return new Result<Program>.pass(program);
-    } catch (e, s) {
-      return new Result<Program>.crash(e, s);
+      return crash(e, s);
     }
   }
 }
@@ -220,83 +181,10 @@ class ClosureConversion extends Step<Program, Program, TestContext> {
   Future<Result<Program>> run(Program program, TestContext testContext) async {
     try {
       program = closure_conversion.transformProgram(program);
-      return new Result<Program>.pass(program);
+      return pass(program);
     } catch (e, s) {
-      return new Result<Program>.crash(e, s);
+      return crash(e, s);
     }
-  }
-}
-
-class MatchExpectation<C extends ChainContext>
-    extends Step<Program, Program, C> {
-  final String suffix;
-
-  const MatchExpectation(this.suffix);
-
-  String get name => "match expectations";
-
-  Future<Result<Program>> run(Program program, C context) async {
-    Library library = program.mainMethod.parent;
-    Uri uri = library.importUri;
-    StringBuffer buffer = new StringBuffer();
-    new Printer(buffer).writeLibraryFile(library);
-
-    File expectedFile = new File("${uri.toFilePath()}$suffix");
-    if (await expectedFile.exists()) {
-      String expected = await expectedFile.readAsString();
-      if (expected.trim() != "$buffer".trim()) {
-        String diff = await runDiff(expectedFile.uri, "$buffer");
-        return new Result<Program>.fail(
-            null, "$uri doesn't match ${expectedFile.uri}\n$diff");
-      }
-    } else if (generateExpectations) {
-      await openWrite(expectedFile.uri, (IOSink sink) {
-          sink.writeln("$buffer".trim());
-        });
-      return new Result<Program>.fail(program, "Generated ${expectedFile.uri}");
-    } else {
-      return new Result<Program>.fail(program, """
-Please create file ${expectedFile.path} with this content:
-$buffer""");
-    }
-    return new Result<Program>.pass(program);
-  }
-}
-
-class WriteDill extends Step<Program, Uri, TestContext> {
-  const WriteDill();
-
-  String get name => "write .dill";
-
-  Future<Result<Uri>> run(Program program, TestContext context) async {
-    Directory tmp = await Directory.systemTemp.createTemp();
-    Uri uri = tmp.uri.resolve("generated.dill");
-    File generated = new File.fromUri(uri);
-    IOSink sink = generated.openWrite();
-    try {
-      new BinaryPrinter(sink).writeProgramFile(program);
-    } catch (e, s) {
-      return new Result<Uri>.fail(uri, e, s);
-    } finally {
-      print("Wrote `${generated.path}`");
-      await sink.close();
-    }
-    return new Result<Uri>.pass(uri);
-  }
-}
-
-class ReadDill extends Step<Uri, Uri, TestContext> {
-  const ReadDill();
-
-  String get name => "read .dill";
-
-  Future<Result<Uri>> run(Uri uri, TestContext context) async {
-    try {
-      loadProgramFromBinary(uri.toFilePath());
-    } catch (e, s) {
-      return new Result<Uri>.fail(uri, e, s);
-    }
-    return new Result<Uri>.pass(uri);
   }
 }
 
@@ -316,22 +204,6 @@ class Run extends Step<Uri, int, TestContext> {
     }
     return process.toResult();
   }
-}
-
-Future<String> runDiff(Uri expected, String actual) async {
-  StdioProcess process = await StdioProcess.run(
-      "diff", <String>["-u", expected.toFilePath(), "-"], input: actual);
-  return process.output;
-}
-
-Future openWrite(Uri uri, f(IOSink sink)) async {
-  IOSink sink = new File.fromUri(uri).openWrite();
-  try {
-    await f(sink);
-  } finally {
-    await sink.close();
-  }
-  print("Wrote $uri");
 }
 
 main(List<String> arguments) => runMe(arguments, createContext, "testing.json");

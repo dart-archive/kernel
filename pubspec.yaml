@@ -13,7 +13,7 @@ dev_dependencies:
   testing:
     git:
       url: https://github.com/peter-ahe-google/testing.git
-      ref: 93e2e15
+      ref: ca5f7c5
 dependency_overrides:
   analyzer: 0.29.0-alpha.1
   test: 0.12.15+6 # Override version constraint on package:test
