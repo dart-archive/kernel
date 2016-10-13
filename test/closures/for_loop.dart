@@ -6,12 +6,8 @@ const int max = 100;
 
 main() {
   var closures = [];
-  try { // TODO(ahe): Remove try-catch.
-    for (int i = 0; i < max; i++) {
-      closures.add(() => i);
-    }
-  } on String {
-    return;
+  for (int i = 0; i < max; i++) {
+    closures.add(() => i);
   }
   int sum = 0;
   for (Function f in closures) {

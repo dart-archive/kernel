@@ -20,23 +20,15 @@ class Closure#0 extends core::Object implements core::Function { // from null
 }
 static method main() → dynamic {
   dynamic closure;
-  try {
-    {
-      final mock::Context #t3 = new mock::Context::•(1);
-      #t3.parent = null;
-      #t3.[]=(0, 0);
-      dynamic fn = new self::Closure#0::•(#t3);
-      for(; #t3.[](0).<(3); #t3.[]=(0, #t3.[](0).+(1))) {
-        {
-          #t3.[]=(0, #t3.[](0).+(1));
-          closure = fn;
-        }
-        throw "Context refresh not implemented";
-      }
+  {
+    mock::Context #t3 = new mock::Context::•(1);
+    #t3.parent = null;
+    #t3.[]=(0, 0);
+    dynamic fn = new self::Closure#0::•(#t3);
+    for(; #t3.[](0).<(3); #t3 = #t3.copy(), #t3.[]=(0, #t3.[](0).+(1))) {
+      #t3.[]=(0, #t3.[](0).+(1));
+      closure = fn;
     }
-  }
-  on core::String catch(no-exception-var) {
-    return;
   }
   dynamic x = closure.call();
   if(!x.==(1)) {

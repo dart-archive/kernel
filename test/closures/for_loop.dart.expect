@@ -21,21 +21,13 @@ class Closure#0 extends core::Object implements core::Function { // from null
 static const field core::int max = 100;
 static method main() → dynamic {
   dynamic closures = <dynamic>[];
-  try {
-    {
-      final mock::Context #t3 = new mock::Context::•(1);
-      #t3.parent = null;
-      #t3.[]=(0, 0);
-      for(; #t3.[](0).<(self::max); #t3.[]=(0, #t3.[](0).+(1))) {
-        {
-          closures.add(new self::Closure#0::•(#t3));
-        }
-        throw "Context refresh not implemented";
-      }
+  {
+    mock::Context #t3 = new mock::Context::•(1);
+    #t3.parent = null;
+    #t3.[]=(0, 0);
+    for(; #t3.[](0).<(self::max); #t3 = #t3.copy(), #t3.[]=(0, #t3.[](0).+(1))) {
+      closures.add(new self::Closure#0::•(#t3));
     }
-  }
-  on core::String catch(no-exception-var) {
-    return;
   }
   core::int sum = 0;
   for(core::Function f in closures) {

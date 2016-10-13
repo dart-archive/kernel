@@ -4,13 +4,9 @@
 
 main() {
   var closure;
-  try { // TODO(ahe): Remove try-catch.
-    for (var i=0, fn = () => i; i < 3; i++) {
-      i += 1;
-      closure = fn;
-    }
-  } on String {
-    return;
+  for (var i=0, fn = () => i; i < 3; i++) {
+    i += 1;
+    closure = fn;
   }
   var x = closure();
   if (x != 1) {

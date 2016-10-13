@@ -23,6 +23,12 @@ import 'skip.dart';
 ///       operator[]= (int i, value) {
 ///         list[i] = value;
 ///       }
+///       Context copy() {
+///         Context c = new Context(list.length);
+///         c.parent = parent;
+///         c.list.setRange(0, list.length, list);
+///         return c;
+///       }
 ///     }
 ///
 /// Returns the mock.
@@ -30,9 +36,13 @@ Class mockUpContext(CoreTypes coreTypes, Program program) {
   ///     final List list;
   Field listField = new Field(
       new Name("list"), type: coreTypes.listClass.rawType, isFinal: true);
+  Accessor listFieldAccessor =
+      new ThisPropertyAccessor(listField.name, listField, null);
 
   ///     var parent;
   Field parentField = new Field(new Name("parent"));
+  Accessor parentFieldAccessor =
+      new ThisPropertyAccessor(parentField.name, parentField, parentField);
 
   List<Field> fields = <Field>[listField, parentField];
 
@@ -56,8 +66,7 @@ Class mockUpContext(CoreTypes coreTypes, Program program) {
   iParameter = new VariableDeclaration(
       "i", type: coreTypes.intClass.rawType, isFinal: true);
   Accessor accessor = IndexAccessor.make(
-      new ThisPropertyAccessor(
-          listField.name, listField, listField).buildSimpleRead(),
+      listFieldAccessor.buildSimpleRead(),
       new VariableAccessor(iParameter).buildSimpleRead(),
       null, null);
   Procedure indexGet = new Procedure(new Name("[]"), ProcedureKind.Operator,
@@ -72,8 +81,7 @@ Class mockUpContext(CoreTypes coreTypes, Program program) {
   VariableDeclaration valueParameter = new VariableDeclaration(
       "value", isFinal: true);
   accessor = IndexAccessor.make(
-      new ThisPropertyAccessor(
-          listField.name, listField, listField).buildSimpleRead(),
+      listFieldAccessor.buildSimpleRead(),
       new VariableAccessor(iParameter).buildSimpleRead(), null, null);
   Expression expression = accessor.buildAssignment(
       new VariableAccessor(valueParameter).buildSimpleRead(),
@@ -83,7 +91,44 @@ Class mockUpContext(CoreTypes coreTypes, Program program) {
           positionalParameters: <VariableDeclaration>[
               iParameter, valueParameter]));
 
-  List<Procedure> procedures = <Procedure>[indexGet, indexSet];
+  ///       Context copy() {
+  ///         Context c = new Context(list.length);
+  ///         c.parent = parent;
+  ///         c.list.setRange(0, list.length, list);
+  ///         return c;
+  ///       }
+  VariableDeclaration c = new VariableDeclaration(
+      "c", initializer: new ConstructorInvocation(
+          constructor,
+          new Arguments(
+              <Expression>[
+                  new PropertyGet(listFieldAccessor.buildSimpleRead(),
+                      new Name("length"))])));
+  Accessor accessCParent = PropertyAccessor.make(
+      new VariableGet(c), parentField.name, parentField, parentField);
+  Accessor accessCList = PropertyAccessor.make(
+      new VariableGet(c), listField.name, listField, null);
+  List<Statement> statements = <Statement>[
+      c,
+      new ExpressionStatement(
+          accessCParent.buildAssignment(
+              parentFieldAccessor.buildSimpleRead(), voidContext: true)),
+      new ExpressionStatement(
+          new MethodInvocation(
+              accessCList.buildSimpleRead(),
+              new Name("setRange"),
+              new Arguments(
+                  <Expression>[
+                      new IntLiteral(0),
+                      new PropertyGet(
+                          listFieldAccessor.buildSimpleRead(),
+                          new Name("length")),
+                      listFieldAccessor.buildSimpleRead()]))),
+      new ReturnStatement(new VariableGet(c))];
+  Procedure copy = new Procedure(new Name("copy"), ProcedureKind.Method,
+      new FunctionNode(new Block(statements)));
+
+  List<Procedure> procedures = <Procedure>[indexGet, indexSet, copy];
 
   Class contextClass = new Class(name: "Context",
       supertype: coreTypes.objectClass.rawType, constructors: [constructor],
@@ -187,6 +232,12 @@ abstract class Context {
   Expression assign(VariableDeclaration variable, Expression value);
 
   Context toClosureContext(VariableDeclaration parameter);
+
+  Expression clone() {
+    return new Throw(
+        new StringLiteral(
+            "Context clone not implemented for ${runtimeType}"));
+  }
 }
 
 class NoContext extends Context {
@@ -293,24 +344,16 @@ class LocalContext extends Context {
       } else if (current is ClosureContext) {
         variabless.addAll(current.variabless);
         current = null;
-      } else if (current is LoopContext) {
-        // TODO.
-        current = current.parent;
       }
     }
     return new ClosureContext(converter, parameter, variabless);
   }
-}
 
-class LoopContext {
-  final ClosureConverter converter;
-  final Context parent;
-
-  LoopContext(this.converter, this.parent);
-
-  void extend(VariableDeclaration variable, Expression value) {
-    converter.context =
-        new LocalContext(converter, parent)..extend(variable, value);
+  Expression clone() {
+    self.isFinal = false;
+    return new VariableSet(
+        self, new MethodInvocation(
+            new VariableGet(self), new Name("copy"), new Arguments.empty()));
   }
 }
 
@@ -370,6 +413,10 @@ class ClosureConverter extends Transformer with DartTypeVisitor<DartType> {
   final Map<FunctionNode, Set<TypeParameter>> capturedTypeVariables;
   final Queue<FunctionNode> enclosingGenericFunctions =
       new Queue<FunctionNode>();
+
+  /// Records place-holders for cloning contexts. See [visitForStatement].
+  final Set<InvalidExpression> contextClonePlaceHolders =
+      new Set<InvalidExpression>();
 
   Library currentLibrary;
   int closureCount = 0;
@@ -767,10 +814,14 @@ class ClosureConverter extends Transformer with DartTypeVisitor<DartType> {
     return newVariable;
   }
 
-  TreeNode cloneContext(TreeNode node) {
-    // TODO(ahe): Implement this.
-    return new ExpressionStatement(
-        new Throw(new StringLiteral("Context refresh not implemented")));
+  Expression cloneContext() {
+    InvalidExpression placeHolder = new InvalidExpression();
+    contextClonePlaceHolders.add(placeHolder);
+    return placeHolder;
+  }
+
+  TreeNode visitInvalidExpression(InvalidExpression node) {
+    return contextClonePlaceHolders.remove(node) ? context.clone() : node;
   }
 
   TreeNode visitForStatement(ForStatement node) {
@@ -789,26 +840,17 @@ class ClosureConverter extends Transformer with DartTypeVisitor<DartType> {
       //
       //     {
       //       var x = 0;
-      //       for (; x < 10; x++) {
-      //         body;
-      //         clone-context;
-      //       }
+      //       for (; x < 10; clone-context, x++) body;
       //     }
       //
-      // Notice that a Dart `continue` in a loop is translated to a `break`
-      // statement in Kernel. So if there was a `continue` statement in the
-      // Dart source of `body`, it would look something like this:
-      //
-      //     L: { ... break L; ... }
-      //
-      // Because of this, we know that `clone-context` is always evaluated
-      // before the next iteration of the loop.
+      // `clone-context` is a place-holder that will later be replaced by an
+      // expression that clones the current closure context (see
+      // [visitInvalidExpression]).
       List<Statement> statements = <Statement>[];
       statements.addAll(node.variables);
       statements.add(node);
       node.variables.clear();
-      node.body = new Block(<Statement>[node.body, cloneContext(node)]);
-      node.body.parent = node;
+      node.updates.insert(0, cloneContext());
       return new Block(statements).accept(this);
     }
     return super.visitForStatement(node);
