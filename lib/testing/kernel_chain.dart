@@ -12,7 +12,11 @@ import 'dart:io' show
     File,
     IOSink;
 
+import 'dart:typed_data' show
+    Uint8List;
+
 import 'package:kernel/kernel.dart' show
+    Repository,
     loadProgramFromBinary;
 
 import 'package:kernel/text/ast_to_text.dart' show
@@ -32,6 +36,12 @@ import 'package:kernel/checks.dart' show
 
 import 'package:kernel/binary/ast_to_binary.dart' show
     BinaryPrinter;
+
+import 'package:kernel/binary/ast_from_binary.dart' show
+    BinaryBuilder;
+
+import 'package:kernel/binary/loader.dart' show
+    BinaryLoader;
 
 const bool generateExpectations =
     const bool.fromEnvironment("generateExpectations");
@@ -143,6 +153,44 @@ class ReadDill extends Step<Uri, Uri, dynamic> {
     }
     return pass(uri);
   }
+}
+
+class Copy extends Step<Program, Program, dynamic> {
+  const Copy();
+
+  String get name => "copy program";
+
+  Future<Result<Program>> run(Program program, _) async {
+    BytesCollector sink = new BytesCollector();
+    new BinaryPrinter(sink).writeProgramFile(program);
+    Uint8List bytes = sink.collect();
+    BinaryLoader loader = new BinaryLoader(new Repository());
+    return pass(new BinaryBuilder(loader, bytes).readProgramFile());
+  }
+}
+
+class BytesCollector implements Sink<List<int>> {
+  final List<List<int>> lists = <List<int>>[];
+
+  int length = 0;
+
+  void add(List<int> data) {
+    lists.add(data);
+    length += data.length;
+  }
+
+  Uint8List collect() {
+    Uint8List result = new Uint8List(length);
+    int offset = 0;
+    for (List<int> list in lists) {
+      result.setRange(offset, offset += list.length, list);
+    }
+    lists.clear();
+    length = 0;
+    return result;
+  }
+
+  void close() {}
 }
 
 Future<String> runDiff(Uri expected, String actual) async {
