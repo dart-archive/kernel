@@ -1187,7 +1187,7 @@ class GlobalIndexer extends TreeVisitor {
   }
 }
 
-/// Puts a buffer in front of an [Sink<List<int>>].
+/// Puts a buffer in front of a [Sink<List<int>>].
 class BufferedSink {
   static const int SIZE = 100000;
   static const int SMALL = 10000;

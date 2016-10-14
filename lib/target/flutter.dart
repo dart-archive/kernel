@@ -6,6 +6,7 @@ library kernel.target.flutter;
 import '../ast.dart';
 import '../transformations/continuation.dart' as cont;
 import '../transformations/erasure.dart';
+import '../transformations/sanitize_for_vm.dart';
 import '../transformations/mixin_full_resolution.dart' as mix;
 import '../transformations/setup_builtin_library.dart' as setup_builtin_library;
 import 'targets.dart';
@@ -16,6 +17,8 @@ class FlutterTarget extends Target {
   FlutterTarget(this.flags);
 
   bool get strongMode => flags.strongMode;
+  
+  bool get strongModeSdk => false;
 
   String get name => 'flutter';
 
@@ -59,5 +62,7 @@ class FlutterTarget extends Target {
     if (strongMode) {
       new Erasure().transform(program);
     }
+
+    new SanitizeForVM().transform(program);
   }
 }

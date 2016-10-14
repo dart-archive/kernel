@@ -406,7 +406,11 @@ class Printer extends Visitor<Null> {
   }
 
   void writeType(DartType type) {
-    type.accept(this);
+    if (type == null) {
+      print('<No DartType>');
+    } else {
+      type.accept(this);
+    }
   }
 
   void writeOptionalType(DartType type) {
@@ -966,7 +970,6 @@ class Printer extends Visitor<Null> {
     for (var statement in node.body.statements) {
       statement.accept(this);
     }
-    endLine();
     write('$spaces   => ');
     writeExpression(node.value);
     endLine();
@@ -976,7 +979,7 @@ class Printer extends Visitor<Null> {
     state = savedState;
     column = savedColumn;
 
-    write('}| ');
+    write('}|');
   }
 
   defaultExpression(Expression node) {
@@ -1135,7 +1138,7 @@ class Printer extends Visitor<Null> {
 
   visitForStatement(ForStatement node) {
     writeIndentation();
-    writeWord('for');
+    writeSpaced('for');
     writeSymbol('(');
     writeList(node.variables, writeVariableDeclaration);
     writeComma(';');
@@ -1150,7 +1153,7 @@ class Printer extends Visitor<Null> {
 
   visitForInStatement(ForInStatement node) {
     writeIndentation();
-    writeWord('for');
+    writeSpaced('for');
     writeSymbol('(');
     writeVariableDeclaration(node.variable, useVarKeyword: true);
     writeSpaced('in');
@@ -1415,10 +1418,8 @@ class Printer extends Visitor<Null> {
 
   visitTypeParameter(TypeParameter node) {
     writeWord(getTypeParameterName(node));
-    if (node.bound is! DynamicType) {
-      writeSpaced('extends');
-      writeType(node.bound);
-    }
+    writeSpaced('extends');
+    writeType(node.bound);
   }
 
   defaultNode(Node node) {
