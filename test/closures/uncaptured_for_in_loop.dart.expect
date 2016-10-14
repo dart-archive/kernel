@@ -12,23 +12,22 @@ class Closure#0 extends core::Object implements core::Function { // from null
   method call() → dynamic {
     final mock::Context #t2 = |{
                                   "This is a temporary solution. In the VM, this will become an additional parameter.";
-
                                  => this.{self::Closure#0::context}
-                              }| ;
+                              }|;
     return #t2.[](0);
   }
 }
 static const field dynamic numbers = const <core::int>[0, 1, 2, 3, 4, 5, 6, 7, 8, 9];
 static method main() → dynamic {
   dynamic closures = <dynamic>[];
-  for(core::int i in self::numbers) {
+  for (core::int i in self::numbers) {
     final mock::Context #t3 = new mock::Context::•(1);
     #t3.parent = null;
     #t3.[]=(0, i);
     closures.add(new self::Closure#0::•(#t3));
   }
   core::int sum = 0;
-  for(core::Function f in closures) {
+  for (core::Function f in closures) {
     sum = sum.+(f.call());
   }
   core::int expectedSum = self::numbers.length.-(1).*(self::numbers.length).~/(2);

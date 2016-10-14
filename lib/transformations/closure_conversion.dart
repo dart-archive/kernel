@@ -529,7 +529,8 @@ class ClosureConverter extends Transformer with DartTypeVisitor<DartType> {
       }
       assert(original.length == captured.length);
       typeParameters = new List<TypeParameter>.generate(
-          captured.length, (int i) => new TypeParameter(original[i].name));
+          captured.length, (int i) => new TypeParameter(
+              original[i].name, coreTypes.objectClass.rawType));
       typeArguments = new List<DartType>.generate(captured.length, (int i) {
         TypeParameter mappedTypeVariable = original[i];
         if (enclosingTypeParameterMapping != null) {

@@ -12,9 +12,8 @@ class Closure#0 extends core::Object implements core::Function { // from null
   method call() → dynamic {
     final mock::Context #t2 = |{
                                   "This is a temporary solution. In the VM, this will become an additional parameter.";
-
                                  => this.{self::Closure#0::context}
-                              }| ;
+                              }|;
     return null;
   }
 }
@@ -27,9 +26,8 @@ class Closure#1 extends core::Object implements core::Function { // from null
   method call() → dynamic {
     final mock::Context #t4 = |{
                                   "This is a temporary solution. In the VM, this will become an additional parameter.";
-
                                  => this.{self::Closure#1::context}
-                              }| ;
+                              }|;
     return #t4.[](0).call();
   }
 }
