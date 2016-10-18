@@ -654,6 +654,13 @@ class ClosureConverter extends Transformer with DartTypeVisitor<DartType> {
         new Arguments(<Expression>[accessContext], types: typeArguments));
   }
 
+  TreeNode visitField(Field node) {
+    context = new NoContext(this);
+    node = super.visitField(node);
+    context = null;
+    return node;
+  }
+
   TreeNode visitProcedure(Procedure node) {
     // TODO(ahe): Delete this check, eventually all procedures should be
     // converted.
