@@ -4,14 +4,22 @@
 
 var x = () => "x";
 
-class C {
+class C<T> {
+  var v = (x) => x is T;
+
   final y = () => "y";
 
   static final z = () => "z";
 }
 
 main() {
+  if (!new C<String>().v("")) throw "C<String>.v false on String";
+  if (new C<String>().v(0)) throw "C<String>.v true on int";
+  if (new C<String>().v(null)) throw "C<String>.v true on null";
+  if (new C<int>().v("")) throw "C<int>.v true on String";
+  if (!new C<int>().v(0)) throw "C<int>.v false on int";
+  if (new C<int>().v(null)) throw "C<int>.v true on null";
   if ("x" != x()) throw "x";
-  if ("y" != new C().y()) throw "y";
+  if ("y" != new C<String>().y()) throw "y";
   if ("z" != C.z()) throw "z";
 }
