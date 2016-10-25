@@ -8,9 +8,11 @@ import 'dart:collection' show
     Queue;
 
 import '../ast.dart';
+import '../clone.dart';
 import '../core_types.dart';
-import '../visitor.dart';
 import '../frontend/accessors.dart';
+import '../visitor.dart';
+
 import 'skip.dart';
 
 /// Extend the program with this mock:
@@ -634,10 +636,7 @@ class ClosureConverter extends Transformer with DartTypeVisitor<DartType> {
         supertype: coreTypes.objectClass.rawType,
         typeParameters: typeParameters,
         implementedTypes: <InterfaceType>[coreTypes.functionClass.rawType]);
-    closureClass.addMember(
-        new Field(new Name("note"), type: coreTypes.stringClass.rawType,
-            initializer: new StringLiteral(
-                "This is temporary. The VM doesn't need closure classes.")));
+    addClosureClassNote(closureClass);
     Field contextField = new Field(
         new Name("context"), type: contextClass.rawType);
     closureClass.addMember(contextField);
@@ -924,6 +923,81 @@ class ClosureConverter extends Transformer with DartTypeVisitor<DartType> {
   TreeNode visitThisExpression(ThisExpression node) {
     return isOuterMostContext
         ? node : context.lookup(thisAccess[currentMember]);
+  }
+
+  TreeNode visitStaticGet(StaticGet node) {
+    Member target = node.target;
+    if (target is Procedure && target.kind == ProcedureKind.Method) {
+      Expression expression = getTearOffExpression(node.target);
+      expression.transformChildren(this);
+      return expression;
+    }
+    return super.visitStaticGet(node);
+  }
+
+  /// Creates a closure that will invoke [procedure].
+  Expression getTearOffExpression(Procedure procedure) {
+    // TODO(ahe): Implement instance tear-offs.
+    assert(!procedure.isInstanceMember);
+
+    Class closureClass = new Class(
+        name: 'Closure#${closureCount++}',
+        supertype: coreTypes.objectClass.rawType,
+        implementedTypes: <InterfaceType>[coreTypes.functionClass.rawType]);
+    addClosureClassNote(closureClass);
+    Constructor constructor = new Constructor(
+        new FunctionNode(new EmptyStatement()),
+        name: new Name(""));
+    closureClass.addMember(constructor);
+    closureClass.addMember(
+        new Procedure(new Name("call"), ProcedureKind.Method,
+            forwardFunction(procedure)));
+    currentLibrary.addClass(closureClass);
+    return new ConstructorInvocation(constructor, new Arguments.empty());
+  }
+
+  /// Creates a function that has the same signature as `procedure.function`
+  /// and which forwards all arguments to `procedure`.
+  FunctionNode forwardFunction(Procedure procedure) {
+    FunctionNode function = procedure.function;
+    CloneVisitor cloner = new CloneVisitor();
+    List<TypeParameter> typeParameters =
+        function.typeParameters.map(cloner.clone).toList();
+    List<VariableDeclaration> positionalParameters =
+        function.positionalParameters.map(cloner.clone).toList();
+    List<VariableDeclaration> namedParameters =
+        function.namedParameters.map(cloner.clone).toList();
+    // TODO(ahe): Clone or copy inferredReturnValue?
+    InferredValue inferredReturnValue = null;
+
+    List<DartType> types = typeParameters.map(
+        (TypeParameter parameter) => new TypeParameterType(parameter)).toList();
+    List<Expression> positional = positionalParameters.map(
+        (VariableDeclaration parameter) => new VariableGet(parameter)).toList();
+    List<NamedExpression> named = namedParameters.map(
+        (VariableDeclaration parameter) {
+          return new NamedExpression(
+              parameter.name, new VariableGet(parameter));
+        }).toList();
+
+    Arguments arguments = new Arguments(positional, types: types, named: named);
+    return new FunctionNode(
+        new ReturnStatement(new StaticInvocation(procedure, arguments)),
+        typeParameters: typeParameters,
+        positionalParameters: positionalParameters,
+        namedParameters: namedParameters,
+        requiredParameterCount: function.requiredParameterCount,
+        returnType: function.returnType,
+        inferredReturnValue: inferredReturnValue);
+  }
+
+  // TODO(ahe): Remove this method when we don't generate closure classes
+  // anymore.
+  void addClosureClassNote(Class closureClass) {
+    closureClass.addMember(
+        new Field(new Name("note"), type: coreTypes.stringClass.rawType,
+            initializer: new StringLiteral(
+                "This is temporary. The VM doesn't need closure classes.")));
   }
 }
 
