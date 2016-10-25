@@ -153,8 +153,8 @@ Program transformProgram(Program program) {
 }
 
 class ClosureInfo extends RecursiveVisitor {
-  FunctionNode _currentFunction;
-  final Map<VariableDeclaration, FunctionNode> _function =
+  FunctionNode currentFunction;
+  final Map<VariableDeclaration, FunctionNode> function =
       <VariableDeclaration, FunctionNode>{};
 
   final Set<VariableDeclaration> variables = new Set<VariableDeclaration>();
@@ -172,20 +172,27 @@ class ClosureInfo extends RecursiveVisitor {
   final Map<FunctionNode, String> localNames = <FunctionNode, String>{};
 
   Class currentClass;
-  FunctionNode currentMember;
+
+  Member currentMember;
+
+  FunctionNode currentMemberFunction;
 
   bool get isOuterMostContext {
-    return _currentFunction == null || currentMember == _currentFunction;
+    return currentFunction == null || currentMemberFunction == currentFunction;
   }
 
-  void beginMember(FunctionNode function, Name name) {
+  void beginMember(Member member, [FunctionNode function]) {
     currentMemberLocalNames.clear();
-    localNames[function] = computeUniqueLocalName(name.name);
-    currentMember = function;
+    if (function != null) {
+      localNames[function] = computeUniqueLocalName(member.name.name);
+    }
+    currentMember = member;
+    currentMemberFunction = function;
   }
 
   void endMember() {
     currentMember = null;
+    currentMemberFunction = null;
   }
 
   visitClass(Class node) {
@@ -195,14 +202,20 @@ class ClosureInfo extends RecursiveVisitor {
   }
 
   visitConstructor(Constructor node) {
-    beginMember(node.function, node.name);
+    beginMember(node, node.function);
     super.visitConstructor(node);
     endMember();
   }
 
   visitProcedure(Procedure node) {
-    beginMember(node.function, node.name);
+    beginMember(node, node.function);
     super.visitProcedure(node);
+    endMember();
+  }
+
+  visitField(Field node) {
+    beginMember(node);
+    super.visitField(node);
     endMember();
   }
 
@@ -210,16 +223,15 @@ class ClosureInfo extends RecursiveVisitor {
     if (name == null || name.isEmpty) {
       name = "function";
     }
-    if (_currentFunction == null) {
+    if (currentFunction == null) {
       if (currentMember != null) {
-        Member member = currentMember.parent;
-        name = "${member.name}#$name";
+        name = "${currentMember.name.name}#$name";
       }
       if (currentClass != null) {
         name = "${currentClass.name}#$name";
       }
     } else {
-      name = "${localNames[_currentFunction]}#$name";
+      name = "${localNames[currentFunction]}#$name";
     }
     int count = 1;
     String candidate = name;
@@ -238,33 +250,33 @@ class ClosureInfo extends RecursiveVisitor {
 
   visitFunctionNode(FunctionNode node) {
     localNames.putIfAbsent(node, computeUniqueLocalName);
-    var saved = _currentFunction;
-    _currentFunction = node;
+    var saved = currentFunction;
+    currentFunction = node;
     node.visitChildren(this);
-    _currentFunction = saved;
+    currentFunction = saved;
     Set<TypeParameter> capturedTypeVariables = typeVariables[node];
     if (capturedTypeVariables != null && !isOuterMostContext) {
       // Propagate captured type variables to enclosing function.
       typeVariables
-          .putIfAbsent(_currentFunction, () => new Set<TypeParameter>())
+          .putIfAbsent(currentFunction, () => new Set<TypeParameter>())
           .addAll(capturedTypeVariables);
     }
   }
 
   visitVariableDeclaration(VariableDeclaration node) {
-    _function[node] = _currentFunction;
+    function[node] = currentFunction;
     node.visitChildren(this);
   }
 
   visitVariableGet(VariableGet node) {
-    if (_function[node.variable] != _currentFunction) {
+    if (function[node.variable] != currentFunction) {
       variables.add(node.variable);
     }
     node.visitChildren(this);
   }
 
   visitVariableSet(VariableSet node) {
-    if (_function[node.variable] != _currentFunction) {
+    if (function[node.variable] != currentFunction) {
       variables.add(node.variable);
     }
     node.visitChildren(this);
@@ -273,7 +285,7 @@ class ClosureInfo extends RecursiveVisitor {
   visitTypeParameterType(TypeParameterType node) {
     if (!isOuterMostContext) {
       typeVariables
-          .putIfAbsent(_currentFunction, () => new Set<TypeParameter>())
+          .putIfAbsent(currentFunction, () => new Set<TypeParameter>())
           .add(node.parameter);
     }
   }
@@ -281,7 +293,7 @@ class ClosureInfo extends RecursiveVisitor {
   visitThisExpression(ThisExpression node) {
     if (!isOuterMostContext) {
       thisAccess.putIfAbsent(
-          currentMember, () => new VariableDeclaration("#self"));
+          currentMemberFunction, () => new VariableDeclaration("#self"));
     }
   }
 }
