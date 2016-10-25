@@ -101,20 +101,24 @@ class MatchExpectation extends Step<Program, Program, dynamic> {
     if (await expectedFile.exists()) {
       String expected = await expectedFile.readAsString();
       if (expected.trim() != "$buffer".trim()) {
-        String diff = await runDiff(expectedFile.uri, "$buffer");
-        return fail(null, "$uri doesn't match ${expectedFile.uri}\n$diff");
+        if (!generateExpectations) {
+          String diff = await runDiff(expectedFile.uri, "$buffer");
+          return fail(null, "$uri doesn't match ${expectedFile.uri}\n$diff");
+        }
+      } else {
+        return pass(program);
       }
-    } else if (generateExpectations) {
+    }
+    if (generateExpectations) {
       await openWrite(expectedFile.uri, (IOSink sink) {
-          sink.writeln("$buffer".trim());
-        });
-      return fail(program, "Generated ${expectedFile.uri}");
+        sink.writeln("$buffer".trim());
+      });
+      return pass(program);
     } else {
       return fail(program, """
 Please create file ${expectedFile.path} with this content:
 $buffer""");
     }
-    return pass(program);
   }
 }
 

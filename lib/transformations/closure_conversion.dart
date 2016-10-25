@@ -143,16 +143,16 @@ Class mockUpContext(CoreTypes coreTypes, Program program) {
 }
 
 Program transformProgram(Program program) {
-  var captured = new CapturedVariables();
-  captured.visitProgram(program);
+  var info = new ClosureInfo();
+  info.visitProgram(program);
 
   CoreTypes coreTypes = new CoreTypes(program);
   Class contextClass = mockUpContext(coreTypes, program);
-  var convert = new ClosureConverter(coreTypes, captured, contextClass);
+  var convert = new ClosureConverter(coreTypes, info, contextClass);
   return convert.visitProgram(program);
 }
 
-class CapturedVariables extends RecursiveVisitor {
+class ClosureInfo extends RecursiveVisitor {
   FunctionNode _currentFunction;
   final Map<VariableDeclaration, FunctionNode> _function =
       <VariableDeclaration, FunctionNode>{};
@@ -167,25 +167,77 @@ class CapturedVariables extends RecursiveVisitor {
   final Map<FunctionNode, VariableDeclaration> thisAccess =
       <FunctionNode, VariableDeclaration>{};
 
+  final Set<String> currentMemberLocalNames = new Set<String>();
+
+  final Map<FunctionNode, String> localNames = <FunctionNode, String>{};
+
+  Class currentClass;
   FunctionNode currentMember;
 
   bool get isOuterMostContext {
     return _currentFunction == null || currentMember == _currentFunction;
   }
 
-  visitConstructor(Constructor node) {
-    currentMember = node.function;
-    super.visitConstructor(node);
+  void beginMember(FunctionNode function, Name name) {
+    currentMemberLocalNames.clear();
+    localNames[function] = computeUniqueLocalName(name.name);
+    currentMember = function;
+  }
+
+  void endMember() {
     currentMember = null;
+  }
+
+  visitClass(Class node) {
+    currentClass = node;
+    super.visitClass(node);
+    currentClass = null;
+  }
+
+  visitConstructor(Constructor node) {
+    beginMember(node.function, node.name);
+    super.visitConstructor(node);
+    endMember();
   }
 
   visitProcedure(Procedure node) {
-    currentMember = node.function;
+    beginMember(node.function, node.name);
     super.visitProcedure(node);
-    currentMember = null;
+    endMember();
+  }
+
+  String computeUniqueLocalName([String name]) {
+    if (name == null || name.isEmpty) {
+      name = "function";
+    }
+    if (_currentFunction == null) {
+      if (currentMember != null) {
+        Member member = currentMember.parent;
+        name = "${member.name}#$name";
+      }
+      if (currentClass != null) {
+        name = "${currentClass.name}#$name";
+      }
+    } else {
+      name = "${localNames[_currentFunction]}#$name";
+    }
+    int count = 1;
+    String candidate = name;
+    while (currentMemberLocalNames.contains(candidate)) {
+      candidate = "$name#${count++}";
+    }
+    currentMemberLocalNames.add(candidate);
+    return candidate;
+  }
+
+  visitFunctionDeclaration(FunctionDeclaration node) {
+    assert(!localNames.containsKey(node));
+    localNames[node.function] = computeUniqueLocalName(node.variable.name);
+    return super.visitFunctionDeclaration(node);
   }
 
   visitFunctionNode(FunctionNode node) {
+    localNames.putIfAbsent(node, computeUniqueLocalName);
     var saved = _currentFunction;
     _currentFunction = node;
     node.visitChildren(this);
@@ -300,6 +352,7 @@ class LocalContext extends Context {
             new ConstructorInvocation(contextClass.constructors.first,
                                       new Arguments(<Expression>[zero])),
             type: new InterfaceType(contextClass));
+    declaration.name = "#context";
     converter.insert(declaration);
     converter.insert(new ExpressionStatement(
         new PropertySet(new VariableGet(declaration),
@@ -426,6 +479,7 @@ class ClosureConverter extends Transformer with DartTypeVisitor<DartType> {
   final Set<VariableDeclaration> capturedVariables;
   final Map<FunctionNode, Set<TypeParameter>> capturedTypeVariables;
   final Map<FunctionNode, VariableDeclaration> thisAccess;
+  final Map<FunctionNode, String> localNames;
   final Queue<FunctionNode> enclosingGenericFunctions =
       new Queue<FunctionNode>();
 
@@ -434,7 +488,6 @@ class ClosureConverter extends Transformer with DartTypeVisitor<DartType> {
       new Set<InvalidExpression>();
 
   Library currentLibrary;
-  int closureCount = 0;
   Block _currentBlock;
   int _insertionIndex = 0;
 
@@ -466,10 +519,11 @@ class ClosureConverter extends Transformer with DartTypeVisitor<DartType> {
   Map<TypeParameter, TypeParameter> typeParameterMapping;
 
   ClosureConverter(
-      this.coreTypes, CapturedVariables captured, this.contextClass)
-      : this.capturedVariables = captured.variables,
-        this.capturedTypeVariables = captured.typeVariables,
-        this.thisAccess = captured.thisAccess;
+      this.coreTypes, ClosureInfo info, this.contextClass)
+      : this.capturedVariables = info.variables,
+        this.capturedTypeVariables = info.typeVariables,
+        this.thisAccess = info.thisAccess,
+        this.localNames = info.localNames;
 
   FunctionNode currentMember;
 
@@ -532,9 +586,8 @@ class ClosureConverter extends Transformer with DartTypeVisitor<DartType> {
     }
     _insertionIndex = 0;
 
-    VariableDeclaration contextVariable = new VariableDeclaration(null,
-        type: contextClass.rawType,
-        isFinal: true);
+    VariableDeclaration contextVariable = new VariableDeclaration(
+        "#contextParameter", type: contextClass.rawType, isFinal: true);
     Context parent = context;
     context = context.toClosureContext(contextVariable);
 
@@ -631,25 +684,10 @@ class ClosureConverter extends Transformer with DartTypeVisitor<DartType> {
       Expression accessContext,
       List<TypeParameter> typeParameters,
       List<DartType> typeArguments) {
-    Class closureClass = new Class(
-        name: 'Closure#${closureCount++}',
-        supertype: coreTypes.objectClass.rawType,
-        typeParameters: typeParameters,
-        implementedTypes: <InterfaceType>[coreTypes.functionClass.rawType]);
-    addClosureClassNote(closureClass);
     Field contextField = new Field(
         new Name("context"), type: contextClass.rawType);
-    closureClass.addMember(contextField);
-    VariableDeclaration contextParameter = new VariableDeclaration(
-        null, type: contextClass.rawType, isFinal: true);
-    Constructor constructor = new Constructor(
-        new FunctionNode(new EmptyStatement(),
-            positionalParameters: <VariableDeclaration>[contextParameter]),
-        name: new Name(""),
-        initializers: <Initializer>[
-            new FieldInitializer(
-                contextField, new VariableGet(contextParameter))]);
-    closureClass.addMember(constructor);
+    Class closureClass = createClosureClass(function, fields: [contextField],
+        typeParameters: typeParameters);
     closureClass.addMember(
         new Procedure(new Name("call"), ProcedureKind.Method, function));
     currentLibrary.addClass(closureClass);
@@ -669,7 +707,7 @@ class ClosureConverter extends Transformer with DartTypeVisitor<DartType> {
         new PropertyGet(new ThisExpression(), contextField.name, contextField));
 
     contextVariable.initializer.parent = contextVariable;
-    return new ConstructorInvocation(constructor,
+    return new ConstructorInvocation(closureClass.constructors.single,
         new Arguments(<Expression>[accessContext], types: typeArguments));
   }
 
@@ -842,7 +880,8 @@ class ClosureConverter extends Transformer with DartTypeVisitor<DartType> {
 
   VariableDeclaration getReplacementLoopVariable(VariableDeclaration variable) {
     VariableDeclaration newVariable = new VariableDeclaration(
-        null, initializer: variable.initializer, type: variable.type)
+        variable.name, initializer: variable.initializer,
+        type: variable.type)
         ..flags = variable.flags;
     variable.initializer = new VariableGet(newVariable);
     variable.initializer.parent = variable;
@@ -939,21 +978,13 @@ class ClosureConverter extends Transformer with DartTypeVisitor<DartType> {
   Expression getTearOffExpression(Procedure procedure) {
     // TODO(ahe): Implement instance tear-offs.
     assert(!procedure.isInstanceMember);
-
-    Class closureClass = new Class(
-        name: 'Closure#${closureCount++}',
-        supertype: coreTypes.objectClass.rawType,
-        implementedTypes: <InterfaceType>[coreTypes.functionClass.rawType]);
-    addClosureClassNote(closureClass);
-    Constructor constructor = new Constructor(
-        new FunctionNode(new EmptyStatement()),
-        name: new Name(""));
-    closureClass.addMember(constructor);
+    Class closureClass = createClosureClass(procedure.function);
     closureClass.addMember(
         new Procedure(new Name("call"), ProcedureKind.Method,
             forwardFunction(procedure)));
     currentLibrary.addClass(closureClass);
-    return new ConstructorInvocation(constructor, new Arguments.empty());
+    return new ConstructorInvocation(
+        closureClass.constructors.single, new Arguments.empty());
   }
 
   /// Creates a function that has the same signature as `procedure.function`
@@ -989,6 +1020,35 @@ class ClosureConverter extends Transformer with DartTypeVisitor<DartType> {
         requiredParameterCount: function.requiredParameterCount,
         returnType: function.returnType,
         inferredReturnValue: inferredReturnValue);
+  }
+
+  Class createClosureClass(FunctionNode function,
+      {List<Field> fields, List<TypeParameter> typeParameters}) {
+    Class closureClass = new Class(
+        name: 'Closure#${localNames[function]}',
+        supertype: coreTypes.objectClass.rawType,
+        typeParameters: typeParameters,
+        implementedTypes: <InterfaceType>[coreTypes.functionClass.rawType]);
+    addClosureClassNote(closureClass);
+
+    List<VariableDeclaration> parameters = <VariableDeclaration>[];
+    List<Initializer> initializers = <Initializer>[];
+    for (Field field in fields ?? const <Field>[]) {
+      closureClass.addMember(field);
+      VariableDeclaration parameter = new VariableDeclaration(
+          field.name.name, type: field.type, isFinal: true);
+      parameters.add(parameter);
+      initializers.add(new FieldInitializer(field, new VariableGet(parameter)));
+    }
+
+    closureClass.addMember(
+        new Constructor(
+            new FunctionNode(
+                new EmptyStatement(), positionalParameters: parameters),
+            name: new Name(""),
+            initializers: initializers));
+
+    return closureClass;
   }
 
   // TODO(ahe): Remove this method when we don't generate closure classes

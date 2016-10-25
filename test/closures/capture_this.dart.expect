@@ -9,58 +9,58 @@ class C extends core::Object {
     : super core::Object::•()
     ;
   method m() → dynamic {
-    final mock::Context #t1 = new mock::Context::•(1);
-    #t1.parent = null;
-    #t1.[]=(0, this);
-    return new self::Closure#0::•(#t1);
+    final mock::Context #context = new mock::Context::•(1);
+    #context.parent = null;
+    #context.[]=(0, this);
+    return new self::Closure#C#m#function::•(#context);
   }
   method f() → dynamic {
-    final mock::Context #t2 = new mock::Context::•(1);
-    #t2.parent = null;
-    #t2.[]=(0, this);
-    return new self::Closure#2::•(#t2);
+    final mock::Context #context = new mock::Context::•(1);
+    #context.parent = null;
+    #context.[]=(0, this);
+    return new self::Closure#C#f#function::•(#context);
   }
 }
-class Closure#0 extends core::Object implements core::Function { // from null
+class Closure#C#m#function extends core::Object implements core::Function { // from null
   field core::String note = "This is temporary. The VM doesn't need closure classes.";
   field mock::Context context;
-  constructor •(final mock::Context #t3) → dynamic
-    : self::Closure#0::context = #t3
+  constructor •(final mock::Context context) → dynamic
+    : self::Closure#C#m#function::context = context
     ;
   method call(dynamic v) → dynamic {
-    final mock::Context #t4 = |{
-                                  "This is a temporary solution. In the VM, this will become an additional parameter.";
-                                 => this.{self::Closure#0::context}
-                              }|;
-    return #t4.[](0).x = v;
+    final mock::Context #contextParameter = |{
+                                                "This is a temporary solution. In the VM, this will become an additional parameter.";
+                                               => this.{self::Closure#C#m#function::context}
+                                            }|;
+    return #contextParameter.[](0).x = v;
   }
 }
-class Closure#1 extends core::Object implements core::Function { // from null
+class Closure#C#f#function#function extends core::Object implements core::Function { // from null
   field core::String note = "This is temporary. The VM doesn't need closure classes.";
   field mock::Context context;
-  constructor •(final mock::Context #t5) → dynamic
-    : self::Closure#1::context = #t5
+  constructor •(final mock::Context context) → dynamic
+    : self::Closure#C#f#function#function::context = context
     ;
   method call() → dynamic {
-    final mock::Context #t6 = |{
-                                  "This is a temporary solution. In the VM, this will become an additional parameter.";
-                                 => this.{self::Closure#1::context}
-                              }|;
-    return #t6.[](0).x;
+    final mock::Context #contextParameter = |{
+                                                "This is a temporary solution. In the VM, this will become an additional parameter.";
+                                               => this.{self::Closure#C#f#function#function::context}
+                                            }|;
+    return #contextParameter.[](0).x;
   }
 }
-class Closure#2 extends core::Object implements core::Function { // from null
+class Closure#C#f#function extends core::Object implements core::Function { // from null
   field core::String note = "This is temporary. The VM doesn't need closure classes.";
   field mock::Context context;
-  constructor •(final mock::Context #t7) → dynamic
-    : self::Closure#2::context = #t7
+  constructor •(final mock::Context context) → dynamic
+    : self::Closure#C#f#function::context = context
     ;
   method call() → dynamic {
-    final mock::Context #t8 = |{
-                                  "This is a temporary solution. In the VM, this will become an additional parameter.";
-                                 => this.{self::Closure#2::context}
-                              }|;
-    return new self::Closure#1::•(#t8);
+    final mock::Context #contextParameter = |{
+                                                "This is a temporary solution. In the VM, this will become an additional parameter.";
+                                               => this.{self::Closure#C#f#function::context}
+                                            }|;
+    return new self::Closure#C#f#function#function::•(#contextParameter);
   }
 }
 static method main() → dynamic {

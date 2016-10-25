@@ -2,28 +2,28 @@ library;
 import self as self;
 import "dart:core" as core;
 
-class Closure#0 extends core::Object implements core::Function { // from null
+class Closure#f_1_1_no_default extends core::Object implements core::Function { // from null
   field core::String note = "This is temporary. The VM doesn't need closure classes.";
   constructor •() → dynamic
     ;
   method call(dynamic a, [dynamic b]) → dynamic
     return self::f_1_1_no_default(a, b);
 }
-class Closure#1 extends core::Object implements core::Function { // from null
+class Closure#f_1_1_default extends core::Object implements core::Function { // from null
   field core::String note = "This is temporary. The VM doesn't need closure classes.";
   constructor •() → dynamic
     ;
   method call(dynamic a, [dynamic b = 2]) → dynamic
     return self::f_1_1_default(a, b);
 }
-class Closure#2 extends core::Object implements core::Function { // from null
+class Closure#f_1_b_no_default extends core::Object implements core::Function { // from null
   field core::String note = "This is temporary. The VM doesn't need closure classes.";
   constructor •() → dynamic
     ;
   method call(dynamic a, {dynamic b}) → dynamic
     return self::f_1_b_no_default(a, b: b);
 }
-class Closure#3 extends core::Object implements core::Function { // from null
+class Closure#f_1_b_default extends core::Object implements core::Function { // from null
   field core::String note = "This is temporary. The VM doesn't need closure classes.";
   constructor •() → dynamic
     ;
@@ -77,8 +77,8 @@ static method test_1(core::Function f, core::bool hasDefault) → dynamic {
   }
 }
 static method main(dynamic arguments) → dynamic {
-  self::test_1_1(new self::Closure#0::•(), false);
-  self::test_1_1(new self::Closure#1::•(), true);
-  self::test_1_b(new self::Closure#2::•(), false);
-  self::test_1_b(new self::Closure#3::•(), true);
+  self::test_1_1(new self::Closure#f_1_1_no_default::•(), false);
+  self::test_1_1(new self::Closure#f_1_1_default::•(), true);
+  self::test_1_b(new self::Closure#f_1_b_no_default::•(), false);
+  self::test_1_b(new self::Closure#f_1_b_default::•(), true);
 }
