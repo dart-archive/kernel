@@ -160,6 +160,11 @@ class CapturedVariables extends RecursiveVisitor {
   final Map<FunctionNode, Set<TypeParameter>> typeVariables =
       <FunctionNode, Set<TypeParameter>>{};
 
+  /// Map from members to synthetic variables for accessing `this` in a local
+  /// function.
+  final Map<FunctionNode, VariableDeclaration> thisAccess =
+      <FunctionNode, VariableDeclaration>{};
+
   FunctionNode currentMember;
 
   bool get isOuterMostContext {
@@ -216,6 +221,13 @@ class CapturedVariables extends RecursiveVisitor {
       typeVariables
           .putIfAbsent(_currentFunction, () => new Set<TypeParameter>())
           .add(node.parameter);
+    }
+  }
+
+  visitThisExpression(ThisExpression node) {
+    if (!isOuterMostContext) {
+      thisAccess.putIfAbsent(
+          currentMember, () => new VariableDeclaration("#self"));
     }
   }
 }
@@ -411,6 +423,7 @@ class ClosureConverter extends Transformer with DartTypeVisitor<DartType> {
   final Class contextClass;
   final Set<VariableDeclaration> capturedVariables;
   final Map<FunctionNode, Set<TypeParameter>> capturedTypeVariables;
+  final Map<FunctionNode, VariableDeclaration> thisAccess;
   final Queue<FunctionNode> enclosingGenericFunctions =
       new Queue<FunctionNode>();
 
@@ -453,7 +466,14 @@ class ClosureConverter extends Transformer with DartTypeVisitor<DartType> {
   ClosureConverter(
       this.coreTypes, CapturedVariables captured, this.contextClass)
       : this.capturedVariables = captured.variables,
-        this.capturedTypeVariables = captured.typeVariables;
+        this.capturedTypeVariables = captured.typeVariables,
+        this.thisAccess = captured.thisAccess;
+
+  FunctionNode currentMember;
+
+  bool get isOuterMostContext {
+    return currentFunction == null || currentMember == currentFunction;
+  }
 
   void insert(Statement statement) {
     _currentBlock.statements.insert(_insertionIndex++, statement);
@@ -672,6 +692,8 @@ class ClosureConverter extends Transformer with DartTypeVisitor<DartType> {
     Statement body = node.function.body;
     if (body == null) return node;
 
+    currentMember = node.function;
+
     // Ensure that the body is a block which becomes the current block.
     if (body is Block) {
       _currentBlock = body;
@@ -690,6 +712,11 @@ class ClosureConverter extends Transformer with DartTypeVisitor<DartType> {
       enclosingGenericFunctions.addLast(node.function);
     }
 
+    VariableDeclaration self = thisAccess[currentMember];
+    if (self != null) {
+      context.extend(self, new ThisExpression());
+    }
+
     node.transformChildren(this);
 
     if (hasTypeVariables) {
@@ -699,6 +726,7 @@ class ClosureConverter extends Transformer with DartTypeVisitor<DartType> {
     _currentBlock = null;
     _insertionIndex = 0;
     context = null;
+    currentMember = null;
     return node;
   }
 
@@ -891,6 +919,11 @@ class ClosureConverter extends Transformer with DartTypeVisitor<DartType> {
       node.body.parent = node;
     }
     return super.visitForInStatement(node);
+  }
+
+  TreeNode visitThisExpression(ThisExpression node) {
+    return isOuterMostContext
+        ? node : context.lookup(thisAccess[currentMember]);
   }
 }
 

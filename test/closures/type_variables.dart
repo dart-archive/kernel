@@ -13,6 +13,11 @@ class C<T, S> {
   bar() {
     C<T, S> self = this;
   }
+
+  baz() {
+    return () => () => new C<T, S>();
+  }
+
   factory C() {
     local() {
       C<T, S> self = new C<T, S>.internal();
@@ -25,4 +30,10 @@ class C<T, S> {
 
 main(arguments) {
   print(new C<String, String>().foo(null)(arguments.first));
+  dynamic c = new C<int, int>().baz()()();
+  if (c is! C<int, int>) throw "$c fails type test 'is C<int, int>'";
+  if (c is C<String, String>) {
+    throw "$c passes type test 'is C<String, String>'";
+  }
+  print(c);
 }

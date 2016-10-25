@@ -1,0 +1,75 @@
+library;
+import self as self;
+import "dart:core" as core;
+import "dart:mock" as mock;
+
+class C extends core::Object {
+  field dynamic x;
+  constructor •() → void
+    : super core::Object::•()
+    ;
+  method m() → dynamic {
+    final mock::Context #t1 = new mock::Context::•(1);
+    #t1.parent = null;
+    #t1.[]=(0, this);
+    return new self::Closure#0::•(#t1);
+  }
+  method f() → dynamic {
+    final mock::Context #t2 = new mock::Context::•(1);
+    #t2.parent = null;
+    #t2.[]=(0, this);
+    return new self::Closure#2::•(#t2);
+  }
+}
+class Closure#0 extends core::Object implements core::Function { // from null
+  field core::String note = "This is temporary. The VM doesn't need closure classes.";
+  field mock::Context context;
+  constructor •(final mock::Context #t3) → dynamic
+    : self::Closure#0::context = #t3
+    ;
+  method call(dynamic v) → dynamic {
+    final mock::Context #t4 = |{
+                                  "This is a temporary solution. In the VM, this will become an additional parameter.";
+                                 => this.{self::Closure#0::context}
+                              }|;
+    return #t4.[](0).x = v;
+  }
+}
+class Closure#1 extends core::Object implements core::Function { // from null
+  field core::String note = "This is temporary. The VM doesn't need closure classes.";
+  field mock::Context context;
+  constructor •(final mock::Context #t5) → dynamic
+    : self::Closure#1::context = #t5
+    ;
+  method call() → dynamic {
+    final mock::Context #t6 = |{
+                                  "This is a temporary solution. In the VM, this will become an additional parameter.";
+                                 => this.{self::Closure#1::context}
+                              }|;
+    return #t6.[](0).x;
+  }
+}
+class Closure#2 extends core::Object implements core::Function { // from null
+  field core::String note = "This is temporary. The VM doesn't need closure classes.";
+  field mock::Context context;
+  constructor •(final mock::Context #t7) → dynamic
+    : self::Closure#2::context = #t7
+    ;
+  method call() → dynamic {
+    final mock::Context #t8 = |{
+                                  "This is a temporary solution. In the VM, this will become an additional parameter.";
+                                 => this.{self::Closure#2::context}
+                              }|;
+    return new self::Closure#1::•(#t8);
+  }
+}
+static method main() → dynamic {
+  self::C c = new self::C::•();
+  c.x = 41;
+  c.m().call(42);
+  if(!42.==(c.x))
+    throw "Unexpected value in c.x: ${c.x}";
+  dynamic result = c.f().call().call();
+  if(!42.==(result))
+    throw "Unexpected value from c.f()()(): ${result}";
+}
