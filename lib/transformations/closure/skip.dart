@@ -5,7 +5,9 @@
 // TODO(ahe): Delete this file, eventually all procedures should be converted.
 library kernel.transformations.closure_conversion.skip;
 
-import '../ast.dart';
+import '../../ast.dart' show
+    Class,
+    Procedure;
 
 /// Set of fully-qualified names of procedures that we don't perform closure
 /// conversion on. Set is represented as a map as that can be a compile-time
