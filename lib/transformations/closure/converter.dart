@@ -427,6 +427,7 @@ class ClosureConverter extends Transformer with DartTypeVisitor<DartType> {
       // TODO(ahe): I'd like to avoid testing on the parent pointer.
       return null;
     }
+    // TODO(ahe): The parent can also be a catch block.
     throw "Unexpected parent for $node: ${node.parent.parent}";
   }
 
