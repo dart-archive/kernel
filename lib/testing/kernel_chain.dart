@@ -43,9 +43,6 @@ import 'package:kernel/binary/ast_from_binary.dart' show
 import 'package:kernel/binary/loader.dart' show
     BinaryLoader;
 
-const bool generateExpectations =
-    const bool.fromEnvironment("generateExpectations");
-
 Future<bool> fileExists(Uri base, String path) async {
   return await new File.fromUri(base.resolve(path)).exists();
 }
@@ -86,7 +83,12 @@ class SanityCheck extends Step<Program, Program, dynamic> {
 class MatchExpectation extends Step<Program, Program, dynamic> {
   final String suffix;
 
-  const MatchExpectation(this.suffix);
+  final bool updateExpectations;
+
+  const MatchExpectation(
+      this.suffix,
+      {this.updateExpectations: const bool.fromEnvironment("updateExpectations",
+          defaultValue: const bool.fromEnvironment("generateExpectations"))});
 
   String get name => "match expectations";
 
@@ -101,7 +103,7 @@ class MatchExpectation extends Step<Program, Program, dynamic> {
     if (await expectedFile.exists()) {
       String expected = await expectedFile.readAsString();
       if (expected.trim() != "$buffer".trim()) {
-        if (!generateExpectations) {
+        if (!updateExpectations) {
           String diff = await runDiff(expectedFile.uri, "$buffer");
           return fail(null, "$uri doesn't match ${expectedFile.uri}\n$diff");
         }
@@ -109,7 +111,7 @@ class MatchExpectation extends Step<Program, Program, dynamic> {
         return pass(program);
       }
     }
-    if (generateExpectations) {
+    if (updateExpectations) {
       await openWrite(expectedFile.uri, (IOSink sink) {
         sink.writeln("$buffer".trim());
       });

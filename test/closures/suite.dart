@@ -62,24 +62,27 @@ class TestContext extends ChainContext {
 
   final DartSdk dartSdk;
 
-  final List<Step> steps = const <Step>[
-      const Kernel(),
-      const Print(),
-      const SanityCheck(),
-      const ClosureConversion(),
-      const Print(),
-      const SanityCheck(),
-      const MatchExpectation(".expect"),
-      const WriteDill(),
-      const ReadDill(),
-      const Run(),
-  ];
+  final List<Step> steps;
 
   TestContext(String sdk, this.vm, Uri packages, bool strongMode,
-      this.dartSdk)
+      this.dartSdk, bool updateExpectations)
       : packages = packages,
         options = new DartOptions(strongMode: strongMode, sdk: sdk,
-            packagePath: packages.toFilePath());
+            packagePath: packages.toFilePath()),
+        steps = <Step>[
+            const Kernel(),
+            const Print(),
+            const SanityCheck(),
+            const ClosureConversion(),
+            const Print(),
+            const SanityCheck(),
+            new MatchExpectation(
+                ".expect", updateExpectations: updateExpectations),
+            const WriteDill(),
+            const ReadDill(),
+            const Run(),
+          ];
+
 
   Future<DartLoader> createLoader() async {
     Repository repository = new Repository();
@@ -115,7 +118,8 @@ Future<bool> fileExists(Uri base, String path) async {
   return await new File.fromUri(base.resolve(path)).exists();
 }
 
-Future<TestContext> createContext(Chain suite) async {
+Future<TestContext> createContext(
+    Chain suite, Map<String, String> environment) async {
   const String suggestion =
       "Try checking the value of environment variable 'DART_AOT_SDK', "
       "it should point to a patched SDK.";
@@ -145,8 +149,9 @@ Future<TestContext> createContext(Chain suite) async {
 
   Uri packages = Uri.base.resolve(".packages");
   bool strongMode = false;
+  bool updateExpectations = environment["updateExpectations"] == "true";
   return new TestContext(sdk, vm, packages, strongMode,
-      createDartSdk(sdk, strongMode: strongMode));
+      createDartSdk(sdk, strongMode: strongMode), updateExpectations);
 }
 
 class Kernel extends Step<TestDescription, Program, TestContext> {
