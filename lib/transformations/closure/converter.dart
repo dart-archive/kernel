@@ -53,6 +53,9 @@ import '../../ast.dart' show
     VariableSet,
     transformList;
 
+import '../../frontend/accessors.dart' show
+    VariableAccessor;
+
 import '../../clone.dart' show
     CloneVisitor;
 
@@ -225,7 +228,7 @@ class ClosureConverter extends Transformer {
     VariableDeclaration contextVariable = new VariableDeclaration(
         "#contextParameter", type: contextClass.rawType, isFinal: true);
     Context parent = context;
-    context = context.toClosureContext(contextVariable);
+    context = context.toNestedContext(new VariableAccessor(contextVariable));
 
     Set<TypeParameter> captured = capturedTypeVariables[currentFunction];
     if (captured != null) {
@@ -529,12 +532,17 @@ class ClosureConverter extends Transformer {
       // `clone-context` is a place-holder that will later be replaced by an
       // expression that clones the current closure context (see
       // [visitInvalidExpression]).
-      List<Statement> statements = <Statement>[];
-      statements.addAll(node.variables);
-      statements.add(node);
-      node.variables.clear();
-      node.updates.insert(0, cloneContext());
-      return new Block(statements).accept(this);
+      return saveContext(() {
+        context = context.toNestedContext(context.accessor);
+        List<Statement> statements = <Statement>[];
+        statements.addAll(node.variables);
+        statements.add(node);
+        node.variables.clear();
+        node.updates.insert(0, cloneContext());
+        _currentBlock = new Block(statements);
+        _insertionIndex = 0;
+        return _currentBlock.accept(this);
+      });
     }
     return super.visitForStatement(node);
   }

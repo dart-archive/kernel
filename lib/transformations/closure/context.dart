@@ -24,13 +24,16 @@ import '../../ast.dart' show
     VariableSet;
 
 import '../../frontend/accessors.dart' show
-    IndexAccessor;
+    Accessor,
+    IndexAccessor,
+    VariableAccessor;
 
 import 'converter.dart' show
     ClosureConverter;
 
 abstract class Context {
   Expression get expression;
+  Accessor get accessor;
 
   void extend(VariableDeclaration variable, Expression value);
   void update(VariableDeclaration variable, Expression value) {
@@ -41,7 +44,7 @@ abstract class Context {
   Expression assign(VariableDeclaration variable, Expression value,
       {bool voidContext: false});
 
-  Context toClosureContext(VariableDeclaration parameter);
+  Context toNestedContext(Accessor accessor);
 
   Expression clone() {
     return new Throw(
@@ -57,6 +60,8 @@ class NoContext extends Context {
 
   Expression get expression => new NullLiteral();
 
+  Accessor get accessor => null;
+
   void extend(VariableDeclaration variable, Expression value) {
     converter.context =
         new LocalContext(converter, this)..extend(variable, value);
@@ -71,8 +76,8 @@ class NoContext extends Context {
     throw 'Unbound NoContext.assign($variable, ...)';
   }
 
-  Context toClosureContext(VariableDeclaration parameter) {
-    return new ClosureContext(converter, parameter,
+  Context toNestedContext(Accessor accessor) {
+    return new NestedContext(converter, accessor,
                               <List<VariableDeclaration>>[]);
   }
 }
@@ -107,7 +112,9 @@ class LocalContext extends Context {
     return new LocalContext._internal(converter, parent, declaration, zero);
   }
 
-  Expression get expression => new VariableGet(self);
+  Expression get expression => accessor.buildSimpleRead();
+
+  Accessor get accessor => new VariableAccessor(self);
 
   void extend(VariableDeclaration variable, Expression value) {
     Arguments arguments = new Arguments(
@@ -145,19 +152,19 @@ class LocalContext extends Context {
             .buildAssignment(value, voidContext: voidContext);
   }
 
-  Context toClosureContext(VariableDeclaration parameter) {
+  Context toNestedContext(Accessor accessor) {
     List<List<VariableDeclaration>> variabless = <List<VariableDeclaration>>[];
     var current = this;
     while (current != null && current is! NoContext) {
       if (current is LocalContext) {
         variabless.add(current.variables);
         current = current.parent;
-      } else if (current is ClosureContext) {
+      } else if (current is NestedContext) {
         variabless.addAll(current.variabless);
         current = null;
       }
     }
-    return new ClosureContext(converter, parameter, variabless);
+    return new NestedContext(converter, accessor, variabless);
   }
 
   Expression clone() {
@@ -168,14 +175,16 @@ class LocalContext extends Context {
   }
 }
 
-class ClosureContext extends Context {
+class NestedContext extends Context {
   final ClosureConverter converter;
-  final VariableDeclaration self;
+  final Accessor accessor;
   final List<List<VariableDeclaration>> variabless;
 
-  ClosureContext(this.converter, this.self, this.variabless);
+  NestedContext(this.converter, this.accessor, this.variabless);
 
-  Expression get expression => new VariableGet(self);
+  Expression get expression {
+    return accessor?.buildSimpleRead() ?? new NullLiteral();
+  }
 
   void extend(VariableDeclaration variable, Expression value) {
     converter.context =
@@ -194,7 +203,7 @@ class ClosureContext extends Context {
       }
       context = new PropertyGet(context, new Name('parent'));
     }
-    throw 'Unbound ClosureContext.lookup($variable)';
+    throw 'Unbound NestedContext.lookup($variable)';
   }
 
   Expression assign(VariableDeclaration variable, Expression value,
@@ -208,10 +217,10 @@ class ClosureContext extends Context {
       }
       context = new PropertyGet(context, new Name('parent'));
     }
-    throw 'Unbound ClosureContext.lookup($variable)';
+    throw 'Unbound NestedContext.lookup($variable)';
   }
 
-  Context toClosureContext(VariableDeclaration parameter) {
-    return new ClosureContext(converter, parameter, variabless);
+  Context toNestedContext(Accessor accessor) {
+    return new NestedContext(converter, accessor, variabless);
   }
 }
