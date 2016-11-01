@@ -4,9 +4,6 @@
 
 library kernel.transformations.closure.converter;
 
-import 'dart:collection' show
-    Queue;
-
 import '../../ast.dart' show
     Arguments,
     Block,
@@ -16,7 +13,6 @@ import '../../ast.dart' show
     Constructor,
     ConstructorInvocation,
     DartType,
-    DartTypeVisitor,
     EmptyStatement,
     Expression,
     ExpressionStatement,
@@ -66,10 +62,6 @@ import '../../core_types.dart' show
 import '../../type_algebra.dart' show
     substitute;
 
-import '../../visitor.dart' show
-    DartTypeVisitor,
-    Transformer;
-
 import 'clone_without_body.dart' show
     CloneWithoutBody;
 
@@ -80,15 +72,13 @@ import 'context.dart' show
 import 'info.dart' show
     ClosureInfo;
 
-class ClosureConverter extends Transformer with DartTypeVisitor<DartType> {
+class ClosureConverter extends Transformer {
   final CoreTypes coreTypes;
   final Class contextClass;
   final Set<VariableDeclaration> capturedVariables;
   final Map<FunctionNode, Set<TypeParameter>> capturedTypeVariables;
   final Map<FunctionNode, VariableDeclaration> thisAccess;
   final Map<FunctionNode, String> localNames;
-  final Queue<FunctionNode> enclosingGenericFunctions =
-      new Queue<FunctionNode>();
 
   /// Records place-holders for cloning contexts. See [visitForStatement].
   final Set<InvalidExpression> contextClonePlaceHolders =
@@ -125,7 +115,7 @@ class ClosureConverter extends Transformer with DartTypeVisitor<DartType> {
   Context context;
 
   /// Maps original type variable (aka type parameter) to a hoisted type
-  /// variable.
+  /// variable type.
   ///
   /// For example, consider:
   ///
@@ -142,9 +132,10 @@ class ClosureConverter extends Transformer with DartTypeVisitor<DartType> {
   ///      call(x) => x is T_;
   ///    }
   ///
-  /// In this example, `typeParameterMapping[T] == T_` when transforming the
-  /// closure in `f`.
-  Map<TypeParameter, TypeParameter> typeParameterMapping;
+  /// In this example, `typeSubstitution[T].parameter == T_` when transforming
+  /// the closure in `f`.
+  Map<TypeParameter, DartType> typeSubstitution =
+      const <TypeParameter, DartType>{};
 
   ClosureConverter(
       this.coreTypes, ClosureInfo info, this.contextClass)
@@ -216,12 +207,9 @@ class ClosureConverter extends Transformer with DartTypeVisitor<DartType> {
   }
 
   Expression handleLocalFunction(FunctionNode function) {
-    if (function.typeParameters.isNotEmpty) {
-      enclosingGenericFunctions.addLast(function);
-    }
     FunctionNode enclosingFunction = currentFunction;
-    Map<TypeParameter, TypeParameter> enclosingTypeParameterMapping =
-        typeParameterMapping;
+    Map<TypeParameter, DartType> enclosingTypeSubstitution =
+        typeSubstitution;
     currentFunction = function;
     Statement body = function.body;
     assert(body != null);
@@ -240,48 +228,18 @@ class ClosureConverter extends Transformer with DartTypeVisitor<DartType> {
     context = context.toClosureContext(contextVariable);
 
     Set<TypeParameter> captured = capturedTypeVariables[currentFunction];
-    List<TypeParameter> typeParameters;
-    List<DartType> typeArguments;
     if (captured != null) {
-      // TODO(ahe): See if we can use copyTypeVariables below instead. Since
-      // types don't have parent pointers, things don't need to be so
-      // complicated as they are here.
-      bool isCaptured(TypeParameter t) => captured.contains(t);
-      List<TypeParameter> original = <TypeParameter>[];
-      original.addAll(currentClass.typeParameters.where(isCaptured));
-      for (FunctionNode generic in enclosingGenericFunctions) {
-        if (generic == function) continue;
-        original.addAll(generic.typeParameters.where(isCaptured));
-      }
-      assert(original.length == captured.length);
-      typeParameters = new List<TypeParameter>.generate(
-          captured.length, (int i) => new TypeParameter(
-              original[i].name, coreTypes.objectClass.rawType));
-      typeArguments = new List<DartType>.generate(captured.length, (int i) {
-        TypeParameter mappedTypeVariable = original[i];
-        if (enclosingTypeParameterMapping != null) {
-          mappedTypeVariable =
-              enclosingTypeParameterMapping[mappedTypeVariable];
-        }
-        return new TypeParameterType(mappedTypeVariable);
-      });
-      typeParameterMapping = <TypeParameter, TypeParameter>{};
-      for (int i = 0; i < original.length; i++) {
-        typeParameterMapping[original[i]] = typeParameters[i];
-      }
+      typeSubstitution = copyTypeVariables(captured);
     } else {
-      typeParameterMapping = null;
+      typeSubstitution = const <TypeParameter, DartType>{};
     }
 
     function.transformChildren(this);
 
     Expression result = addClosure(function, contextVariable, parent.expression,
-        typeParameters, typeArguments);
+        typeSubstitution, enclosingTypeSubstitution);
     currentFunction = enclosingFunction;
-    if (function.typeParameters.isNotEmpty) {
-      enclosingGenericFunctions.removeLast();
-    }
-    typeParameterMapping = enclosingTypeParameterMapping;
+    typeSubstitution = enclosingTypeSubstitution;
     return result;
   }
 
@@ -333,14 +291,14 @@ class ClosureConverter extends Transformer with DartTypeVisitor<DartType> {
       FunctionNode function,
       VariableDeclaration contextVariable,
       Expression accessContext,
-      List<TypeParameter> typeParameters,
-      List<DartType> typeArguments) {
+      Map<TypeParameter, DartType> substitution,
+      Map<TypeParameter, DartType> enclosingTypeSubstitution) {
     Field contextField = new Field(
         // TODO(ahe): Rename to #context.
         new Name("context"), type: contextClass.rawType,
         fileUri: currentFileUri);
     Class closureClass = createClosureClass(function, fields: [contextField],
-        typeParameters: typeParameters);
+        substitution: substitution);
     closureClass.addMember(
         new Procedure(new Name("call"), ProcedureKind.Method, function,
             fileUri: currentFileUri));
@@ -359,10 +317,16 @@ class ClosureConverter extends Transformer with DartTypeVisitor<DartType> {
             "This is a temporary solution. "
             "In the VM, this will become an additional parameter."))]),
         new PropertyGet(new ThisExpression(), contextField.name, contextField));
-
     contextVariable.initializer.parent = contextVariable;
     return new ConstructorInvocation(closureClass.constructors.single,
-        new Arguments(<Expression>[accessContext], types: typeArguments));
+        new Arguments(
+            <Expression>[accessContext],
+            types: new List<DartType>.from(
+                substitution.keys.map(
+                    (TypeParameter t) {
+                      return substitute(
+                          new TypeParameterType(t), enclosingTypeSubstitution);
+                    }))));
   }
 
   TreeNode visitField(Field node) {
@@ -421,21 +385,12 @@ class ClosureConverter extends Transformer with DartTypeVisitor<DartType> {
     // so statements can be emitted into _currentBlock if necessary.
     context = new NoContext(this);
 
-    bool hasTypeVariables = node.function.typeParameters.isNotEmpty;
-    if (hasTypeVariables) {
-      enclosingGenericFunctions.addLast(node.function);
-    }
-
     VariableDeclaration self = thisAccess[currentMemberFunction];
     if (self != null) {
       context.extend(self, new ThisExpression());
     }
 
     node.transformChildren(this);
-
-    if (hasTypeVariables) {
-      enclosingGenericFunctions.removeLast();
-    }
 
     _currentBlock = null;
     _insertionIndex = 0;
@@ -504,7 +459,6 @@ class ClosureConverter extends Transformer with DartTypeVisitor<DartType> {
       // TODO(ahe): I'd like to avoid testing on the parent pointer.
       return null;
     }
-    // TODO(ahe): The parent can also be a catch block.
     throw "Unexpected parent for $node: ${node.parent.parent}";
   }
 
@@ -522,39 +476,8 @@ class ClosureConverter extends Transformer with DartTypeVisitor<DartType> {
         : node;
   }
 
-  DartType visitDartType(DartType node) => node.accept(this);
-
-  DartType defaultDartType(DartType node) => node;
-
-  DartType visitInterfaceType(InterfaceType node) {
-    List<DartType> typeArguments;
-    for (int i = 0; i < node.typeArguments.length; i++) {
-      DartType argument = node.typeArguments[i];
-      DartType rewritten = argument.accept(this);
-      if (argument != rewritten) {
-        if (typeArguments == null) {
-          typeArguments = new List<DartType>.from(node.typeArguments);
-        }
-        typeArguments[i] = rewritten;
-      }
-    }
-    if (typeArguments == null) {
-      return node;
-    } else {
-      return new InterfaceType(node.classNode, typeArguments);
-    }
-  }
-
-  DartType visitTypeParameterType(TypeParameterType node) {
-    if (currentFunction == null) return node;
-    Set<TypeParameter> captured = capturedTypeVariables[currentFunction];
-    if (captured != null) {
-      assert(captured.contains(node.parameter));
-      assert(typeParameterMapping.containsKey(node.parameter));
-      return new TypeParameterType(typeParameterMapping[node.parameter]);
-    } else {
-      return node;
-    }
+  DartType visitDartType(DartType node) {
+    return substitute(node, typeSubstitution);
   }
 
   VariableDeclaration getReplacementLoopVariable(VariableDeclaration variable) {
@@ -700,8 +623,6 @@ class ClosureConverter extends Transformer with DartTypeVisitor<DartType> {
         // variables will be handled most efficiently.
         ? copyTypeVariables(procedure.enclosingClass.typeParameters)
         : const <TypeParameter, DartType>{};
-    List<TypeParameter> typeParameters = new List<TypeParameter>.from(
-        substitution.values.map((TypeParameterType t) => t.parameter));
     Expression receiver = null;
     List<Field> fields = null;
     if (procedure.isInstanceMember) {
@@ -712,7 +633,7 @@ class ClosureConverter extends Transformer with DartTypeVisitor<DartType> {
       receiver = new PropertyGet(new ThisExpression(), self.name, self);
     }
     Class closureClass = createClosureClass(procedure.function, fields: fields,
-        typeParameters: typeParameters);
+        substitution: substitution);
     closureClass.addMember(
         new Procedure(new Name("call"), ProcedureKind.Method,
             forwardFunction(procedure, receiver, substitution),
@@ -773,7 +694,8 @@ class ClosureConverter extends Transformer with DartTypeVisitor<DartType> {
   /// Creates copies of the type variables in [original] and returns a
   /// substitution that can be passed to [substitute] to substitute all uses of
   /// [original] with their copies.
-  Map<TypeParameter, DartType> copyTypeVariables(List<TypeParameter> original) {
+  Map<TypeParameter, DartType> copyTypeVariables(
+      Iterable<TypeParameter> original) {
     if (original.isEmpty) return const <TypeParameter, DartType>{};
     Map<TypeParameter, DartType> substitution = <TypeParameter, DartType>{};
     for (TypeParameter t in original) {
@@ -786,7 +708,9 @@ class ClosureConverter extends Transformer with DartTypeVisitor<DartType> {
   }
 
   Class createClosureClass(FunctionNode function,
-      {List<Field> fields, List<TypeParameter> typeParameters}) {
+      {List<Field> fields, Map<TypeParameter, DartType> substitution}) {
+    List<TypeParameter> typeParameters = new List<TypeParameter>.from(
+        substitution.values.map((TypeParameterType t) => t.parameter));
     Class closureClass = new Class(
         name: 'Closure#${localNames[function]}',
         supertype: coreTypes.objectClass.rawType,
