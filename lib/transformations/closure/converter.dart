@@ -533,7 +533,7 @@ class ClosureConverter extends Transformer {
       // expression that clones the current closure context (see
       // [visitInvalidExpression]).
       return saveContext(() {
-        context = context.toNestedContext(context.accessor);
+        context = context.toNestedContext();
         List<Statement> statements = <Statement>[];
         statements.addAll(node.variables);
         statements.add(node);

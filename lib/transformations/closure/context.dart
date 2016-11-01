@@ -32,20 +32,49 @@ import 'converter.dart' show
     ClosureConverter;
 
 abstract class Context {
+  /// Returns a new expression for accessing this context.
   Expression get expression;
+
+  /// Returns an accessor (or null) for accessing this context.
   Accessor get accessor;
 
+  /// Extend the context to include [variable] initialized to [value]. For
+  /// example, this replaces the [VariableDeclaration] node of a captured local
+  /// variable.
+  ///
+  /// This may create a new context and update the `context` field of the
+  /// current [ClosureConverter].
+  // TODO(ahe): Return context instead?
   void extend(VariableDeclaration variable, Expression value);
+
+  /// Update the initializer [value] of [variable] which was previously added
+  /// with [extend]. This is used when [value] isn't available when the context
+  /// was extended.
   void update(VariableDeclaration variable, Expression value) {
     throw "not supported $runtimeType";
   }
 
+  /// Returns a new expression for reading the value of [variable] from this
+  /// context. For example, for replacing a [VariableGet] of a captured local
+  /// variable.
   Expression lookup(VariableDeclaration variable);
+
+  /// Returns a new expression which stores [value] in [variable] in this
+  /// context. For example, for replacing a [VariableSet] of a captured local
+  /// variable.
   Expression assign(VariableDeclaration variable, Expression value,
       {bool voidContext: false});
 
-  Context toNestedContext(Accessor accessor);
+  /// Returns a new context whose parent is this context. The optional argument
+  /// [accessor] controls how the nested context access this context. This is
+  /// used, for example, when hoisting a local function. In this case, access
+  /// to this context can't be accessed directly via [expression]. In other
+  /// cases, for example, a for-loop, this context is still in scope and can be
+  /// accessed directly (with [accessor]).
+  Context toNestedContext([Accessor accessor]);
 
+  /// Returns a new expression which will copy this context and store the copy
+  /// in the local variable currently holding this context.
   Expression clone() {
     return new Throw(
         new StringLiteral(
@@ -76,7 +105,7 @@ class NoContext extends Context {
     throw 'Unbound NoContext.assign($variable, ...)';
   }
 
-  Context toNestedContext(Accessor accessor) {
+  Context toNestedContext([Accessor accessor]) {
     return new NestedContext(converter, accessor,
                               <List<VariableDeclaration>>[]);
   }
@@ -152,7 +181,8 @@ class LocalContext extends Context {
             .buildAssignment(value, voidContext: voidContext);
   }
 
-  Context toNestedContext(Accessor accessor) {
+  Context toNestedContext([Accessor accessor]) {
+    accessor ??= this.accessor;
     List<List<VariableDeclaration>> variabless = <List<VariableDeclaration>>[];
     var current = this;
     while (current != null && current is! NoContext) {
@@ -220,7 +250,7 @@ class NestedContext extends Context {
     throw 'Unbound NestedContext.lookup($variable)';
   }
 
-  Context toNestedContext(Accessor accessor) {
-    return new NestedContext(converter, accessor, variabless);
+  Context toNestedContext([Accessor accessor]) {
+    return new NestedContext(converter, accessor ?? this.accessor, variabless);
   }
 }
