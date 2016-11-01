@@ -24,7 +24,7 @@ class C<T extends core::Object, S extends core::Object> extends core::Object {
     return local.call();
   }
 }
-class Closure#C#foo#function<T extends core::Object, S extends core::Object> extends core::Object implements core::Function { // from null
+class Closure#C#foo#function<T extends core::Object, S extends core::Object> extends core::Object implements core::Function {
   field core::String note = "This is temporary. The VM doesn't need closure classes.";
   field mock::Context context;
   constructor •(final mock::Context context) → dynamic
@@ -41,7 +41,7 @@ class Closure#C#foo#function<T extends core::Object, S extends core::Object> ext
     return z as self::Closure#C#foo#function::T;
   }
 }
-class Closure#C#baz#function#function<T extends core::Object, S extends core::Object> extends core::Object implements core::Function { // from null
+class Closure#C#baz#function#function<T extends core::Object, S extends core::Object> extends core::Object implements core::Function {
   field core::String note = "This is temporary. The VM doesn't need closure classes.";
   field mock::Context context;
   constructor •(final mock::Context context) → dynamic
@@ -55,7 +55,7 @@ class Closure#C#baz#function#function<T extends core::Object, S extends core::Ob
     return self::C::•<self::Closure#C#baz#function#function::T, self::Closure#C#baz#function#function::S>();
   }
 }
-class Closure#C#baz#function<T extends core::Object, S extends core::Object> extends core::Object implements core::Function { // from null
+class Closure#C#baz#function<T extends core::Object, S extends core::Object> extends core::Object implements core::Function {
   field core::String note = "This is temporary. The VM doesn't need closure classes.";
   field mock::Context context;
   constructor •(final mock::Context context) → dynamic
@@ -69,7 +69,7 @@ class Closure#C#baz#function<T extends core::Object, S extends core::Object> ext
     return new self::Closure#C#baz#function#function::•<self::Closure#C#baz#function::T, self::Closure#C#baz#function::S>(#contextParameter);
   }
 }
-class Closure#C#function#local<T extends core::Object, S extends core::Object> extends core::Object implements core::Function { // from null
+class Closure#C#function#local<T extends core::Object, S extends core::Object> extends core::Object implements core::Function {
   field core::String note = "This is temporary. The VM doesn't need closure classes.";
   field mock::Context context;
   constructor •(final mock::Context context) → dynamic

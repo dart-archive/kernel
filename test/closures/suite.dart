@@ -83,7 +83,6 @@ class TestContext extends ChainContext {
             const Run(),
           ];
 
-
   Future<DartLoader> createLoader() async {
     Repository repository = new Repository();
     return new DartLoader(repository, options, await loadPackagesFile(packages),
@@ -204,6 +203,7 @@ class Run extends Step<Uri, int, TestContext> {
     try {
       process = await StdioProcess.run(
           context.vm.toFilePath(), [generated.path, "Hello, World!"]);
+      print(process.output);
     } finally {
       generated.parent.delete(recursive: true);
     }

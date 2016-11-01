@@ -109,13 +109,20 @@ class ClosureConverter extends Transformer with DartTypeVisitor<DartType> {
   final List<Member> newClassMembers = <Member>[];
 
   Library currentLibrary;
+
+  Class currentClass;
+
+  Member currentMember;
+
+  FunctionNode currentMemberFunction;
+
+  FunctionNode currentFunction;
+
   Block _currentBlock;
+
   int _insertionIndex = 0;
 
   Context context;
-
-  FunctionNode currentFunction;
-  Class currentClass;
 
   /// Maps original type variable (aka type parameter) to a hoisted type
   /// variable.
@@ -147,10 +154,15 @@ class ClosureConverter extends Transformer with DartTypeVisitor<DartType> {
         this.localNames = info.localNames,
         this.tearOffGetterNames = info.tearOffGetterNames;
 
-  FunctionNode currentMember;
-
   bool get isOuterMostContext {
-    return currentFunction == null || currentMember == currentFunction;
+    return currentFunction == null || currentMemberFunction == currentFunction;
+  }
+
+  String get currentFileUri {
+    if (currentMember is Constructor) return currentClass.fileUri;
+    if (currentMember is Field) return (currentMember as Field).fileUri;
+    if (currentMember is Procedure) return (currentMember as Procedure).fileUri;
+    throw "No file uri";
   }
 
   void insert(Statement statement) {
@@ -325,11 +337,13 @@ class ClosureConverter extends Transformer with DartTypeVisitor<DartType> {
       List<DartType> typeArguments) {
     Field contextField = new Field(
         // TODO(ahe): Rename to #context.
-        new Name("context"), type: contextClass.rawType);
+        new Name("context"), type: contextClass.rawType,
+        fileUri: currentFileUri);
     Class closureClass = createClosureClass(function, fields: [contextField],
         typeParameters: typeParameters);
     closureClass.addMember(
-        new Procedure(new Name("call"), ProcedureKind.Method, function));
+        new Procedure(new Name("call"), ProcedureKind.Method, function,
+            fileUri: currentFileUri));
     newLibraryMembers.add(closureClass);
     List<Statement> statements = <Statement>[contextVariable];
     Statement body = function.body;
@@ -352,6 +366,7 @@ class ClosureConverter extends Transformer with DartTypeVisitor<DartType> {
   }
 
   TreeNode visitField(Field node) {
+    currentMember = node;
     context = new NoContext(this);
     if (node.isInstanceMember) {
       Name tearOffName = tearOffGetterNames[node.name];
@@ -363,10 +378,12 @@ class ClosureConverter extends Transformer with DartTypeVisitor<DartType> {
     }
     node = super.visitField(node);
     context = null;
+    currentMember = null;
     return node;
   }
 
   TreeNode visitProcedure(Procedure node) {
+    currentMember = node;
     assert(_currentBlock == null);
     assert(_insertionIndex == 0);
     assert(context == null);
@@ -389,7 +406,7 @@ class ClosureConverter extends Transformer with DartTypeVisitor<DartType> {
 
     if (body == null) return node;
 
-    currentMember = node.function;
+    currentMemberFunction = node.function;
 
     // Ensure that the body is a block which becomes the current block.
     if (body is Block) {
@@ -409,7 +426,7 @@ class ClosureConverter extends Transformer with DartTypeVisitor<DartType> {
       enclosingGenericFunctions.addLast(node.function);
     }
 
-    VariableDeclaration self = thisAccess[currentMember];
+    VariableDeclaration self = thisAccess[currentMemberFunction];
     if (self != null) {
       context.extend(self, new ThisExpression());
     }
@@ -423,6 +440,7 @@ class ClosureConverter extends Transformer with DartTypeVisitor<DartType> {
     _currentBlock = null;
     _insertionIndex = 0;
     context = null;
+    currentMemberFunction = null;
     currentMember = null;
     return node;
   }
@@ -622,7 +640,7 @@ class ClosureConverter extends Transformer with DartTypeVisitor<DartType> {
 
   TreeNode visitThisExpression(ThisExpression node) {
     return isOuterMostContext
-        ? node : context.lookup(thisAccess[currentMember]);
+        ? node : context.lookup(thisAccess[currentMemberFunction]);
   }
 
   TreeNode visitStaticGet(StaticGet node) {
@@ -688,7 +706,7 @@ class ClosureConverter extends Transformer with DartTypeVisitor<DartType> {
     List<Field> fields = null;
     if (procedure.isInstanceMember) {
       // TODO(ahe): Rename to #self.
-      Field self = new Field(new Name("self"));
+      Field self = new Field(new Name("self"), fileUri: currentFileUri);
       self.type = substitute(procedure.enclosingClass.thisType, substitution);
       fields = <Field>[self];
       receiver = new PropertyGet(new ThisExpression(), self.name, self);
@@ -697,7 +715,8 @@ class ClosureConverter extends Transformer with DartTypeVisitor<DartType> {
         typeParameters: typeParameters);
     closureClass.addMember(
         new Procedure(new Name("call"), ProcedureKind.Method,
-            forwardFunction(procedure, receiver, substitution)));
+            forwardFunction(procedure, receiver, substitution),
+            fileUri: currentFileUri));
     newLibraryMembers.add(closureClass);
     Arguments constructorArguments = procedure.isInstanceMember
         ? new Arguments(<Expression>[new ThisExpression()])
@@ -772,7 +791,8 @@ class ClosureConverter extends Transformer with DartTypeVisitor<DartType> {
         name: 'Closure#${localNames[function]}',
         supertype: coreTypes.objectClass.rawType,
         typeParameters: typeParameters,
-        implementedTypes: <InterfaceType>[coreTypes.functionClass.rawType]);
+        implementedTypes: <InterfaceType>[coreTypes.functionClass.rawType],
+        fileUri: currentFileUri);
     addClosureClassNote(closureClass);
 
     List<VariableDeclaration> parameters = <VariableDeclaration>[];
@@ -804,7 +824,8 @@ class ClosureConverter extends Transformer with DartTypeVisitor<DartType> {
   void addFieldForwarder(Name name, Field field) {
     newClassMembers.add(
         new Procedure(name, ProcedureKind.Getter,
-            new FunctionNode(forwardToThisProperty(field))));
+            new FunctionNode(forwardToThisProperty(field)),
+            fileUri: currentFileUri));
   }
 
   Procedure copyWithBody(Procedure procedure, Statement body) {
@@ -824,7 +845,8 @@ class ClosureConverter extends Transformer with DartTypeVisitor<DartType> {
     newClassMembers.add(
         new Procedure(name, ProcedureKind.Getter,
             new FunctionNode(
-                new ReturnStatement(getTearOffExpression(procedure)))));
+                new ReturnStatement(getTearOffExpression(procedure))),
+            fileUri: currentFileUri));
   }
 
   // TODO(ahe): Remove this method when we don't generate closure classes
@@ -833,6 +855,7 @@ class ClosureConverter extends Transformer with DartTypeVisitor<DartType> {
     closureClass.addMember(
         new Field(new Name("note"), type: coreTypes.stringClass.rawType,
             initializer: new StringLiteral(
-                "This is temporary. The VM doesn't need closure classes.")));
+                "This is temporary. The VM doesn't need closure classes."),
+            fileUri: currentFileUri));
   }
 }

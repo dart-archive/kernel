@@ -3,7 +3,7 @@ import self as self;
 import "dart:core" as core;
 import "dart:mock" as mock;
 
-class Closure#main#foo#bar extends core::Object implements core::Function { // from null
+class Closure#main#foo#bar extends core::Object implements core::Function {
   field core::String note = "This is temporary. The VM doesn't need closure classes.";
   field mock::Context context;
   constructor •(final mock::Context context) → dynamic
@@ -17,7 +17,7 @@ class Closure#main#foo#bar extends core::Object implements core::Function { // f
     core::print(#contextParameter.[](0));
   }
 }
-class Closure#main#foo extends core::Object implements core::Function { // from null
+class Closure#main#foo extends core::Object implements core::Function {
   field core::String note = "This is temporary. The VM doesn't need closure classes.";
   field mock::Context context;
   constructor •(final mock::Context context) → dynamic

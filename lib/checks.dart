@@ -8,6 +8,7 @@ import 'ast.dart';
 void runSanityChecks(Program program) {
   CheckParentPointers.check(program);
   CheckReferences.check(program);
+  CheckFileUris.check(program);
 }
 
 class CheckParentPointers extends FakeNodeVisitor {
@@ -215,5 +216,60 @@ class SizeCounter extends RecursiveVisitor {
   defaultNode(TreeNode node) {
     ++size;
     node.visitChildren(this);
+  }
+}
+
+class CheckFileUris extends RecursiveVisitor {
+  final Program program;
+  final List<String> problems = <String>[];
+
+  CheckFileUris(this.program);
+
+  visitLibrary(Library node) {
+    checkFileUri(node.fileUri, node);
+    return super.visitLibrary(node);
+  }
+
+  visitClass(Class node) {
+    if (!node.name.contains("^")) {
+      // TODO(ahe): These are mixin applications, find out where they come from
+      // and fix them.
+      checkFileUri(node.fileUri, node);
+    }
+    return super.visitClass(node);
+  }
+
+  visitField(Field node) {
+    checkFileUri(node.fileUri, node);
+    return super.visitField(node);
+  }
+
+  visitProcedure(Procedure node) {
+    checkFileUri(node.fileUri, node);
+    return super.visitProcedure(node);
+  }
+
+  checkFileUri(String uri, TreeNode node) {
+    if (uri == null) {
+      problems.add("${node.runtimeType} has no fileUri: $node");
+      return;
+    }
+    List<int> lineStarts = program.uriToLineStarts[uri];
+    if (lineStarts == null) {
+      problems.add("No line starts for $uri (via $node)");
+      return;
+    }
+    if (lineStarts.isEmpty) {
+      problems.add("No line starts are empty for $uri (via $node)");
+      return;
+    }
+  }
+
+  static void check(Program program) {
+    CheckFileUris checker = new CheckFileUris(program);
+    program.accept(checker);
+    if (checker.problems.isNotEmpty) {
+      throw checker.problems.join("\n");
+    }
   }
 }

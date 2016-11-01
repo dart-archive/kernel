@@ -21,7 +21,7 @@ class C extends core::Object {
     return new self::Closure#C#f#function::•(#context);
   }
 }
-class Closure#C#m#function extends core::Object implements core::Function { // from null
+class Closure#C#m#function extends core::Object implements core::Function {
   field core::String note = "This is temporary. The VM doesn't need closure classes.";
   field mock::Context context;
   constructor •(final mock::Context context) → dynamic
@@ -35,7 +35,7 @@ class Closure#C#m#function extends core::Object implements core::Function { // f
     return #contextParameter.[](0).x = v;
   }
 }
-class Closure#C#f#function#function extends core::Object implements core::Function { // from null
+class Closure#C#f#function#function extends core::Object implements core::Function {
   field core::String note = "This is temporary. The VM doesn't need closure classes.";
   field mock::Context context;
   constructor •(final mock::Context context) → dynamic
@@ -49,7 +49,7 @@ class Closure#C#f#function#function extends core::Object implements core::Functi
     return #contextParameter.[](0).x;
   }
 }
-class Closure#C#f#function extends core::Object implements core::Function { // from null
+class Closure#C#f#function extends core::Object implements core::Function {
   field core::String note = "This is temporary. The VM doesn't need closure classes.";
   field mock::Context context;
   constructor •(final mock::Context context) → dynamic

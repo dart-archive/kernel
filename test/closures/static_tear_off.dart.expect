@@ -2,28 +2,28 @@ library;
 import self as self;
 import "dart:core" as core;
 
-class Closure#f_1_1_no_default extends core::Object implements core::Function { // from null
+class Closure#f_1_1_no_default extends core::Object implements core::Function {
   field core::String note = "This is temporary. The VM doesn't need closure classes.";
   constructor •() → dynamic
     ;
   method call(dynamic a, [dynamic b]) → dynamic
     return self::f_1_1_no_default(a, b);
 }
-class Closure#f_1_1_default extends core::Object implements core::Function { // from null
+class Closure#f_1_1_default extends core::Object implements core::Function {
   field core::String note = "This is temporary. The VM doesn't need closure classes.";
   constructor •() → dynamic
     ;
   method call(dynamic a, [dynamic b = 2]) → dynamic
     return self::f_1_1_default(a, b);
 }
-class Closure#f_1_b_no_default extends core::Object implements core::Function { // from null
+class Closure#f_1_b_no_default extends core::Object implements core::Function {
   field core::String note = "This is temporary. The VM doesn't need closure classes.";
   constructor •() → dynamic
     ;
   method call(dynamic a, {dynamic b}) → dynamic
     return self::f_1_b_no_default(a, b: b);
 }
-class Closure#f_1_b_default extends core::Object implements core::Function { // from null
+class Closure#f_1_b_default extends core::Object implements core::Function {
   field core::String note = "This is temporary. The VM doesn't need closure classes.";
   constructor •() → dynamic
     ;

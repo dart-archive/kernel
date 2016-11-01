@@ -61,14 +61,15 @@ import '../../frontend/accessors.dart' show
 ///
 /// Returns the mock.
 Class mockUpContext(CoreTypes coreTypes, Program program) {
+  String fileUri = "dart:mock";
   ///     final List list;
-  Field listField = new Field(
-      new Name("list"), type: coreTypes.listClass.rawType, isFinal: true);
+  Field listField = new Field(new Name("list"),
+      type: coreTypes.listClass.rawType, isFinal: true, fileUri: fileUri);
   Accessor listFieldAccessor =
       new ThisPropertyAccessor(listField.name, listField, null);
 
   ///     var parent;
-  Field parentField = new Field(new Name("parent"));
+  Field parentField = new Field(new Name("parent"), fileUri: fileUri);
   Accessor parentFieldAccessor =
       new ThisPropertyAccessor(parentField.name, parentField, parentField);
 
@@ -99,7 +100,8 @@ Class mockUpContext(CoreTypes coreTypes, Program program) {
       null, null);
   Procedure indexGet = new Procedure(new Name("[]"), ProcedureKind.Operator,
       new FunctionNode(new ReturnStatement(accessor.buildSimpleRead()),
-          positionalParameters: <VariableDeclaration>[iParameter]));
+          positionalParameters: <VariableDeclaration>[iParameter]),
+      fileUri: fileUri);
 
   ///     operator[]= (int i, value) {
   ///       list[i] = value;
@@ -117,7 +119,7 @@ Class mockUpContext(CoreTypes coreTypes, Program program) {
   Procedure indexSet = new Procedure(new Name("[]="), ProcedureKind.Operator,
       new FunctionNode(new ExpressionStatement(expression),
           positionalParameters: <VariableDeclaration>[
-              iParameter, valueParameter]));
+              iParameter, valueParameter]), fileUri: fileUri);
 
   ///       Context copy() {
   ///         Context c = new Context(list.length);
@@ -154,16 +156,18 @@ Class mockUpContext(CoreTypes coreTypes, Program program) {
                       listFieldAccessor.buildSimpleRead()]))),
       new ReturnStatement(new VariableGet(c))];
   Procedure copy = new Procedure(new Name("copy"), ProcedureKind.Method,
-      new FunctionNode(new Block(statements)));
+      new FunctionNode(new Block(statements)), fileUri: fileUri);
 
   List<Procedure> procedures = <Procedure>[indexGet, indexSet, copy];
 
   Class contextClass = new Class(name: "Context",
       supertype: coreTypes.objectClass.rawType, constructors: [constructor],
-      fields: fields, procedures: procedures);
+      fields: fields, procedures: procedures, fileUri: fileUri);
   Library mock = new Library(
-      Uri.parse("dart:mock"), name: "mock", classes: [contextClass]);
+      Uri.parse(fileUri), name: "mock", classes: [contextClass])
+      ..fileUri = fileUri;
   program.libraries.add(mock);
   mock.parent = program;
+  program.uriToLineStarts[mock.fileUri] = <int>[0];
   return contextClass;
 }

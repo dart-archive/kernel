@@ -23,13 +23,13 @@ class C extends core::Object {
   method d(dynamic x, {dynamic y = 2}) → dynamic {
     return x.+(y);
   }
-  get /* from null */ a#get() → dynamic
+  get a#get() → dynamic
     return new self::Closure#C#a::•(this);
-  get /* from null */ b#get() → dynamic
+  get b#get() → dynamic
     return new self::Closure#C#b::•(this);
-  get /* from null */ c#get() → dynamic
+  get c#get() → dynamic
     return new self::Closure#C#c::•(this);
-  get /* from null */ d#get() → dynamic
+  get d#get() → dynamic
     return new self::Closure#C#d::•(this);
 }
 class D<T extends core::Object> extends core::Object {
@@ -52,13 +52,13 @@ class D<T extends core::Object> extends core::Object {
   method d(dynamic x, {dynamic y = 2}) → dynamic {
     return x.+(y);
   }
-  get /* from null */ a#get() → dynamic
+  get a#get() → dynamic
     return new self::Closure#D#a::•<self::D::T>(this);
-  get /* from null */ b#get() → dynamic
+  get b#get() → dynamic
     return new self::Closure#D#b::•<self::D::T>(this);
-  get /* from null */ c#get() → dynamic
+  get c#get() → dynamic
     return new self::Closure#D#c::•<self::D::T>(this);
-  get /* from null */ d#get() → dynamic
+  get d#get() → dynamic
     return new self::Closure#D#d::•<self::D::T>(this);
 }
 class E<T extends core::Object> extends core::Object {
@@ -81,16 +81,16 @@ class E<T extends core::Object> extends core::Object {
   method d(self::E::T x, {self::E::T y = 2}) → dynamic {
     return x.+(y);
   }
-  get /* from null */ a#get() → dynamic
+  get a#get() → dynamic
     return new self::Closure#E#a::•<self::E::T>(this);
-  get /* from null */ b#get() → dynamic
+  get b#get() → dynamic
     return new self::Closure#E#b::•<self::E::T>(this);
-  get /* from null */ c#get() → dynamic
+  get c#get() → dynamic
     return new self::Closure#E#c::•<self::E::T>(this);
-  get /* from null */ d#get() → dynamic
+  get d#get() → dynamic
     return new self::Closure#E#d::•<self::E::T>(this);
 }
-class Closure#C#g#function extends core::Object implements core::Function { // from null
+class Closure#C#g#function extends core::Object implements core::Function {
   field core::String note = "This is temporary. The VM doesn't need closure classes.";
   field mock::Context context;
   constructor •(final mock::Context context) → dynamic
@@ -104,7 +104,7 @@ class Closure#C#g#function extends core::Object implements core::Function { // f
     return "g(${x})";
   }
 }
-class Closure#C#a extends core::Object implements core::Function { // from null
+class Closure#C#a extends core::Object implements core::Function {
   field core::String note = "This is temporary. The VM doesn't need closure classes.";
   field self::C self;
   constructor •(final self::C self) → dynamic
@@ -113,7 +113,7 @@ class Closure#C#a extends core::Object implements core::Function { // from null
   method call() → dynamic
     return this.{self::Closure#C#a::self}.{self::C::a}();
 }
-class Closure#C#b extends core::Object implements core::Function { // from null
+class Closure#C#b extends core::Object implements core::Function {
   field core::String note = "This is temporary. The VM doesn't need closure classes.";
   field self::C self;
   constructor •(final self::C self) → dynamic
@@ -122,7 +122,7 @@ class Closure#C#b extends core::Object implements core::Function { // from null
   method call(dynamic x) → dynamic
     return this.{self::Closure#C#b::self}.{self::C::b}(x);
 }
-class Closure#C#c extends core::Object implements core::Function { // from null
+class Closure#C#c extends core::Object implements core::Function {
   field core::String note = "This is temporary. The VM doesn't need closure classes.";
   field self::C self;
   constructor •(final self::C self) → dynamic
@@ -131,7 +131,7 @@ class Closure#C#c extends core::Object implements core::Function { // from null
   method call(dynamic x, [dynamic y = 2]) → dynamic
     return this.{self::Closure#C#c::self}.{self::C::c}(x, y);
 }
-class Closure#C#d extends core::Object implements core::Function { // from null
+class Closure#C#d extends core::Object implements core::Function {
   field core::String note = "This is temporary. The VM doesn't need closure classes.";
   field self::C self;
   constructor •(final self::C self) → dynamic
@@ -140,7 +140,7 @@ class Closure#C#d extends core::Object implements core::Function { // from null
   method call(dynamic x, {dynamic y = 2}) → dynamic
     return this.{self::Closure#C#d::self}.{self::C::d}(x, y: y);
 }
-class Closure#C#f#function extends core::Object implements core::Function { // from null
+class Closure#C#f#function extends core::Object implements core::Function {
   field core::String note = "This is temporary. The VM doesn't need closure classes.";
   field mock::Context context;
   constructor •(final mock::Context context) → dynamic
@@ -154,7 +154,7 @@ class Closure#C#f#function extends core::Object implements core::Function { // f
     return "f";
   }
 }
-class Closure#D#g#function extends core::Object implements core::Function { // from null
+class Closure#D#g#function extends core::Object implements core::Function {
   field core::String note = "This is temporary. The VM doesn't need closure classes.";
   field mock::Context context;
   constructor •(final mock::Context context) → dynamic
@@ -168,7 +168,7 @@ class Closure#D#g#function extends core::Object implements core::Function { // f
     return "g(${x})";
   }
 }
-class Closure#D#a<T extends core::Object> extends core::Object implements core::Function { // from null
+class Closure#D#a<T extends core::Object> extends core::Object implements core::Function {
   field core::String note = "This is temporary. The VM doesn't need closure classes.";
   field self::D<self::Closure#D#a::T> self;
   constructor •(final self::D<self::Closure#D#a::T> self) → dynamic
@@ -177,7 +177,7 @@ class Closure#D#a<T extends core::Object> extends core::Object implements core::
   method call() → dynamic
     return this.{self::Closure#D#a::self}.{self::D::a}();
 }
-class Closure#D#b<T extends core::Object> extends core::Object implements core::Function { // from null
+class Closure#D#b<T extends core::Object> extends core::Object implements core::Function {
   field core::String note = "This is temporary. The VM doesn't need closure classes.";
   field self::D<self::Closure#D#b::T> self;
   constructor •(final self::D<self::Closure#D#b::T> self) → dynamic
@@ -186,7 +186,7 @@ class Closure#D#b<T extends core::Object> extends core::Object implements core::
   method call(dynamic x) → dynamic
     return this.{self::Closure#D#b::self}.{self::D::b}(x);
 }
-class Closure#D#c<T extends core::Object> extends core::Object implements core::Function { // from null
+class Closure#D#c<T extends core::Object> extends core::Object implements core::Function {
   field core::String note = "This is temporary. The VM doesn't need closure classes.";
   field self::D<self::Closure#D#c::T> self;
   constructor •(final self::D<self::Closure#D#c::T> self) → dynamic
@@ -195,7 +195,7 @@ class Closure#D#c<T extends core::Object> extends core::Object implements core::
   method call(dynamic x, [dynamic y = 2]) → dynamic
     return this.{self::Closure#D#c::self}.{self::D::c}(x, y);
 }
-class Closure#D#d<T extends core::Object> extends core::Object implements core::Function { // from null
+class Closure#D#d<T extends core::Object> extends core::Object implements core::Function {
   field core::String note = "This is temporary. The VM doesn't need closure classes.";
   field self::D<self::Closure#D#d::T> self;
   constructor •(final self::D<self::Closure#D#d::T> self) → dynamic
@@ -204,7 +204,7 @@ class Closure#D#d<T extends core::Object> extends core::Object implements core::
   method call(dynamic x, {dynamic y = 2}) → dynamic
     return this.{self::Closure#D#d::self}.{self::D::d}(x, y: y);
 }
-class Closure#D#f#function extends core::Object implements core::Function { // from null
+class Closure#D#f#function extends core::Object implements core::Function {
   field core::String note = "This is temporary. The VM doesn't need closure classes.";
   field mock::Context context;
   constructor •(final mock::Context context) → dynamic
@@ -218,7 +218,7 @@ class Closure#D#f#function extends core::Object implements core::Function { // f
     return "f";
   }
 }
-class Closure#E#g#function<T extends core::Object> extends core::Object implements core::Function { // from null
+class Closure#E#g#function<T extends core::Object> extends core::Object implements core::Function {
   field core::String note = "This is temporary. The VM doesn't need closure classes.";
   field mock::Context context;
   constructor •(final mock::Context context) → dynamic
@@ -232,7 +232,7 @@ class Closure#E#g#function<T extends core::Object> extends core::Object implemen
     return "g(${x})";
   }
 }
-class Closure#E#a<T extends core::Object> extends core::Object implements core::Function { // from null
+class Closure#E#a<T extends core::Object> extends core::Object implements core::Function {
   field core::String note = "This is temporary. The VM doesn't need closure classes.";
   field self::E<self::Closure#E#a::T> self;
   constructor •(final self::E<self::Closure#E#a::T> self) → dynamic
@@ -241,7 +241,7 @@ class Closure#E#a<T extends core::Object> extends core::Object implements core::
   method call() → dynamic
     return this.{self::Closure#E#a::self}.{self::E::a}();
 }
-class Closure#E#b<T extends core::Object> extends core::Object implements core::Function { // from null
+class Closure#E#b<T extends core::Object> extends core::Object implements core::Function {
   field core::String note = "This is temporary. The VM doesn't need closure classes.";
   field self::E<self::Closure#E#b::T> self;
   constructor •(final self::E<self::Closure#E#b::T> self) → dynamic
@@ -250,7 +250,7 @@ class Closure#E#b<T extends core::Object> extends core::Object implements core::
   method call(self::Closure#E#b::T x) → dynamic
     return this.{self::Closure#E#b::self}.{self::E::b}(x);
 }
-class Closure#E#c<T extends core::Object> extends core::Object implements core::Function { // from null
+class Closure#E#c<T extends core::Object> extends core::Object implements core::Function {
   field core::String note = "This is temporary. The VM doesn't need closure classes.";
   field self::E<self::Closure#E#c::T> self;
   constructor •(final self::E<self::Closure#E#c::T> self) → dynamic
@@ -259,7 +259,7 @@ class Closure#E#c<T extends core::Object> extends core::Object implements core::
   method call(self::Closure#E#c::T x, [self::Closure#E#c::T y = 2]) → dynamic
     return this.{self::Closure#E#c::self}.{self::E::c}(x, y);
 }
-class Closure#E#d<T extends core::Object> extends core::Object implements core::Function { // from null
+class Closure#E#d<T extends core::Object> extends core::Object implements core::Function {
   field core::String note = "This is temporary. The VM doesn't need closure classes.";
   field self::E<self::Closure#E#d::T> self;
   constructor •(final self::E<self::Closure#E#d::T> self) → dynamic
@@ -268,7 +268,7 @@ class Closure#E#d<T extends core::Object> extends core::Object implements core::
   method call(self::Closure#E#d::T x, {self::Closure#E#d::T y = 2}) → dynamic
     return this.{self::Closure#E#d::self}.{self::E::d}(x, y: y);
 }
-class Closure#E#f#function extends core::Object implements core::Function { // from null
+class Closure#E#f#function extends core::Object implements core::Function {
   field core::String note = "This is temporary. The VM doesn't need closure classes.";
   field mock::Context context;
   constructor •(final mock::Context context) → dynamic

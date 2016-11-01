@@ -9,9 +9,7 @@ main() {
   } on String catch (e, s) {
     c = () {
       print(e);
-      // TODO(ahe): Print stack trace after fixing issue that prevents them
-      // from being printed.
-      // if (s != null) print(s);
+      if (s != null) print(s);
     };
   }
   c();
