@@ -88,7 +88,7 @@ class _ImportTableBuilder extends RecursiveVisitor {
           path.relative(targetDirectory, from: currentDirectory);
       var filename = path.basename(targetUri.path);
       table.addImport(target, '$relativeDirectory/$filename');
-    } else if (targetUri.scheme == 'file') {
+    } else if (targetUri.scheme == 'file' && referenceUri.path != "_builtin") {
       // Cannot import a file:URI from a dart:URI or package:URI.
       // We may want to remove this restriction, but for now it's just a sanity
       // check.

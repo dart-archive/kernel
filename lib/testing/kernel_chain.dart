@@ -54,8 +54,8 @@ class Print extends Step<Program, Program, dynamic> {
 
   Future<Result<Program>> run(Program program, _) async {
     StringBuffer sb = new StringBuffer();
-    Printer printer = new Printer(sb);
     for (Library library in program.libraries) {
+      Printer printer = new Printer(sb);
       if (library.importUri.scheme != "dart") {
         printer.writeLibraryFile(library);
       }

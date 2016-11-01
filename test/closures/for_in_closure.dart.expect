@@ -32,7 +32,7 @@ static method main() → dynamic {
   for (core::Function f in closures) {
     sum = sum.+(f.call());
   }
-  core::int expectedSum = self::numbers.length.-(1).*(self::numbers.length).~/(2);
+  core::int expectedSum = self::numbers.length#get.-(1).*(self::numbers.length#get).~/(2);
   if(!expectedSum.==(sum)) {
     throw core::Exception::•("Unexpected sum = ${sum} != ${expectedSum}");
   }

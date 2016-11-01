@@ -11,7 +11,10 @@ import '../../ast.dart' show
     FunctionDeclaration,
     FunctionNode,
     Member,
+    Name,
     Procedure,
+    ProcedureKind,
+    PropertyGet,
     ThisExpression,
     TypeParameter,
     TypeParameterType,
@@ -41,6 +44,13 @@ class ClosureInfo extends RecursiveVisitor {
 
   final Map<FunctionNode, String> localNames = <FunctionNode, String>{};
 
+  /// Contains all names used as getter through a [PropertyGet].
+  final Set<Name> invokedGetters = new Set<Name>();
+
+  /// Contains all names of declared regular instance methods (not including
+  /// accessors and operators).
+  final Set<Name> declaredInstanceMethodNames = new Set<Name>();
+
   Class currentClass;
 
   Member currentMember;
@@ -49,6 +59,18 @@ class ClosureInfo extends RecursiveVisitor {
 
   bool get isOuterMostContext {
     return currentFunction == null || currentMemberFunction == currentFunction;
+  }
+
+  /// Maps the names of all instance methods that may be torn off (aka
+  /// implicitly closurized) to `${name.name}#get`.
+  Map<Name, Name> get tearOffGetterNames {
+    Map<Name, Name> result = <Name, Name>{};
+    for (Name name in declaredInstanceMethodNames) {
+      if (invokedGetters.contains(name)) {
+        result[name] = new Name("${name.name}#get", name.library);
+      }
+    }
+    return result;
   }
 
   void beginMember(Member member, [FunctionNode function]) {
@@ -79,6 +101,9 @@ class ClosureInfo extends RecursiveVisitor {
 
   visitProcedure(Procedure node) {
     beginMember(node, node.function);
+    if (node.isInstanceMember && node.kind == ProcedureKind.Method) {
+      declaredInstanceMethodNames.add(node.name);
+    }
     super.visitProcedure(node);
     endMember();
   }
@@ -165,5 +190,10 @@ class ClosureInfo extends RecursiveVisitor {
       thisAccess.putIfAbsent(
           currentMemberFunction, () => new VariableDeclaration("#self"));
     }
+  }
+
+  visitPropertyGet(PropertyGet node) {
+    invokedGetters.add(node.name);
+    super.visitPropertyGet(node);
   }
 }
