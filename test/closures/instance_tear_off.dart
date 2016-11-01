@@ -11,6 +11,26 @@ class C {
   d(x, {y: 2}) => x + y;
 }
 
+/// This class doesn't use its type variable.
+class D<T> {
+  var f = () => "f";
+  get g => (x) => "g($x)";
+  a() => "a";
+  b(x) => x;
+  c(x, [y = 2]) => x + y;
+  d(x, {y: 2}) => x + y;
+}
+
+/// This class uses its type variable.
+class E<T> {
+  var f = () => "f";
+  get g => (T x) => "g($x)";
+  a() => "a";
+  b(T x) => x;
+  c(T x, [T y = 2]) => x + y;
+  d(T x, {T y: 2}) => x + y;
+}
+
 expect(expected, actual) {
   print("Expecting '$expected' and got '$actual'");
   if (expected != actual) {
@@ -19,22 +39,27 @@ expect(expected, actual) {
   }
 }
 
+test(o) {
+  expect("f", o.f());
+  expect("f", (o.f)());
+  expect("g(42)", o.g(42));
+  expect("g(42)", (o.g)(42));
+  expect("a", o.a());
+  expect("a", (o.a)());
+  expect(42, o.b(42));
+  expect(42, (o.b)(42));
+  expect(42, o.c(40));
+  expect(42, (o.c)(40));
+  expect(87, o.c(80, 7));
+  expect(87, (o.c)(80, 7));
+  expect(42, o.d(40));
+  expect(42, (o.d)(40));
+  expect(87, o.d(80, y: 7));
+  expect(87, (o.d)(80, y: 7));
+}
+
 main(arguments) {
-  var c = new C();
-  expect("f", c.f());
-  expect("f", (c.f)());
-  expect("g(42)", c.g(42));
-  expect("g(42)", (c.g)(42));
-  expect("a", c.a());
-  expect("a", (c.a)());
-  expect(42, c.b(42));
-  expect(42, (c.b)(42));
-  expect(42, c.c(40));
-  expect(42, (c.c)(40));
-  expect(87, c.c(80, 7));
-  expect(87, (c.c)(80, 7));
-  expect(42, c.d(40));
-  expect(42, (c.d)(40));
-  expect(87, c.d(80, y: 7));
-  expect(87, (c.d)(80, y: 7));
+  test(new C());
+  test(new D<int>());
+  test(new E<int>());
 }

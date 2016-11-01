@@ -16,7 +16,6 @@ import '../../ast.dart' show
     ConstructorInvocation,
     DartType,
     DartTypeVisitor,
-    DynamicType,
     EmptyStatement,
     Expression,
     ExpressionStatement,
@@ -62,6 +61,9 @@ import '../../clone.dart' show
 
 import '../../core_types.dart' show
     CoreTypes;
+
+import '../../type_algebra.dart' show
+    substitute;
 
 import '../../visitor.dart' show
     DartTypeVisitor,
@@ -231,6 +233,9 @@ class ClosureConverter extends Transformer with DartTypeVisitor<DartType> {
     List<TypeParameter> typeParameters;
     List<DartType> typeArguments;
     if (captured != null) {
+      // TODO(ahe): See if we can use copyTypeVariables below instead. Since
+      // types don't have parent pointers, things don't need to be so
+      // complicated as they are here.
       bool isCaptured(TypeParameter t) => captured.contains(t);
       List<TypeParameter> original = <TypeParameter>[];
       original.addAll(currentClass.typeParameters.where(isCaptured));
@@ -643,45 +648,52 @@ class ClosureConverter extends Transformer with DartTypeVisitor<DartType> {
     return super.visitPropertyGet(node);
   }
 
-  /// Creates a closure that will invoke [procedure].
+  /// Creates a closure that will invoke [procedure] and return an expression
+  /// that instantiates that closure.
   Expression getTearOffExpression(Procedure procedure) {
+    Map<TypeParameter, DartType> substitution = procedure.isInstanceMember
+        // Note: we do not attempt to avoid copying type variables that aren't
+        // used in the signature of [procedure]. It might be more economical to
+        // only copy type variables that are used. However, we assume that
+        // passing type arguments that match the enclosing class' type
+        // variables will be handled most efficiently.
+        ? copyTypeVariables(procedure.enclosingClass.typeParameters)
+        : const <TypeParameter, DartType>{};
+    List<TypeParameter> typeParameters = new List<TypeParameter>.from(
+        substitution.values.map((TypeParameterType t) => t.parameter));
     Expression receiver = null;
     List<Field> fields = null;
     if (procedure.isInstanceMember) {
-      Field self =
-          // TODO(ahe): Use type variables on `type` argument.
-          // TODO(ahe): Rename to #self.
-          new Field(new Name("self"), type: procedure.enclosingClass.rawType);
+      // TODO(ahe): Rename to #self.
+      Field self = new Field(new Name("self"));
+      self.type = substitute(procedure.enclosingClass.thisType, substitution);
       fields = <Field>[self];
       receiver = new PropertyGet(new ThisExpression(), self.name, self);
     }
-    Class closureClass = createClosureClass(procedure.function, fields: fields);
+    Class closureClass = createClosureClass(procedure.function, fields: fields,
+        typeParameters: typeParameters);
     closureClass.addMember(
         new Procedure(new Name("call"), ProcedureKind.Method,
-            forwardFunction(procedure, receiver)));
+            forwardFunction(procedure, receiver, substitution)));
     newLibraryMembers.add(closureClass);
     Arguments constructorArguments = procedure.isInstanceMember
         ? new Arguments(<Expression>[new ThisExpression()])
         : new Arguments.empty();
+    if (substitution.isNotEmpty) {
+      constructorArguments.types.addAll(
+          procedure.enclosingClass.thisType.typeArguments);
+    }
     return new ConstructorInvocation(
         closureClass.constructors.single, constructorArguments);
   }
 
   /// Creates a function that has the same signature as `procedure.function`
   /// and which forwards all arguments to `procedure`.
-  FunctionNode forwardFunction(Procedure procedure, Expression receiver) {
-    Map<TypeParameter, DartType> typeSubstitution;
-    CloneVisitor cloner = this.cloner;
-    if (procedure.isInstanceMember) {
-      typeSubstitution = <TypeParameter, DartType>{};
-      for (TypeParameter t in procedure.enclosingClass.typeParameters) {
-        // TODO(ahe): Create new type variables on the closure class instead.
-        typeSubstitution[t] = const DynamicType();
-      }
-      if (typeSubstitution.isNotEmpty) {
-        cloner = new CloneWithoutBody(typeSubstitution: typeSubstitution);
-      }
-    }
+  FunctionNode forwardFunction(Procedure procedure, Expression receiver,
+      Map<TypeParameter, DartType> substitution) {
+    CloneVisitor cloner = substitution.isEmpty
+        ? this.cloner
+        : new CloneWithoutBody(typeSubstitution: substitution);
     FunctionNode function = procedure.function;
     List<TypeParameter> typeParameters =
         function.typeParameters.map(cloner.clone).toList();
@@ -712,8 +724,23 @@ class ClosureConverter extends Transformer with DartTypeVisitor<DartType> {
         positionalParameters: positionalParameters,
         namedParameters: namedParameters,
         requiredParameterCount: function.requiredParameterCount,
-        returnType: cloner.visitOptionalType(function.returnType),
+        returnType: substitute(function.returnType, substitution),
         inferredReturnValue: inferredReturnValue);
+  }
+
+  /// Creates copies of the type variables in [original] and returns a
+  /// substitution that can be passed to [substitute] to substitute all uses of
+  /// [original] with their copies.
+  Map<TypeParameter, DartType> copyTypeVariables(List<TypeParameter> original) {
+    if (original.isEmpty) return const <TypeParameter, DartType>{};
+    Map<TypeParameter, DartType> substitution = <TypeParameter, DartType>{};
+    for (TypeParameter t in original) {
+      substitution[t] = new TypeParameterType(new TypeParameter(t.name));
+    }
+    substitution.forEach((TypeParameter t, TypeParameterType copy) {
+      copy.parameter.bound = substitute(t.bound, substitution);
+    });
+    return substitution;
   }
 
   Class createClosureClass(FunctionNode function,
