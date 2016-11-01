@@ -472,8 +472,15 @@ class ClosureConverter extends Transformer {
     node.transformChildren(this);
 
     return capturedVariables.contains(node.variable)
-        ? context.assign(node.variable, node.value)
+        ? context.assign(node.variable, node.value,
+            voidContext: isInVoidContext(node))
         : node;
+  }
+
+  bool isInVoidContext(Expression node) {
+    TreeNode parent = node.parent;
+    return parent is ExpressionStatement ||
+        parent is ForStatement && parent.condition != node;
   }
 
   DartType visitDartType(DartType node) {

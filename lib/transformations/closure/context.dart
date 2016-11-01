@@ -23,6 +23,9 @@ import '../../ast.dart' show
     VariableGet,
     VariableSet;
 
+import '../../frontend/accessors.dart' show
+    IndexAccessor;
+
 import 'converter.dart' show
     ClosureConverter;
 
@@ -35,7 +38,8 @@ abstract class Context {
   }
 
   Expression lookup(VariableDeclaration variable);
-  Expression assign(VariableDeclaration variable, Expression value);
+  Expression assign(VariableDeclaration variable, Expression value,
+      {bool voidContext: false});
 
   Context toClosureContext(VariableDeclaration parameter);
 
@@ -62,7 +66,8 @@ class NoContext extends Context {
     throw 'Unbound NoContext.lookup($variable)';
   }
 
-  Expression assign(VariableDeclaration variable, Expression value) {
+  Expression assign(VariableDeclaration variable, Expression value,
+      {bool voidContext: false}) {
     throw 'Unbound NoContext.assign($variable, ...)';
   }
 
@@ -131,14 +136,13 @@ class LocalContext extends Context {
               new Arguments(<Expression>[new IntLiteral(index)]));
   }
 
-  Expression assign(VariableDeclaration variable, Expression value) {
+  Expression assign(VariableDeclaration variable, Expression value,
+      {bool voidContext: false}) {
     var index = variables.indexOf(variable);
     return index == -1
-        ? parent.assign(variable, value)
-        : new MethodInvocation(
-              expression,
-              new Name('[]='),
-              new Arguments(<Expression>[new IntLiteral(index), value]));
+        ? parent.assign(variable, value, voidContext: voidContext)
+        : IndexAccessor.make(expression, new IntLiteral(index), null, null)
+            .buildAssignment(value, voidContext: voidContext);
   }
 
   Context toClosureContext(VariableDeclaration parameter) {
@@ -193,15 +197,14 @@ class ClosureContext extends Context {
     throw 'Unbound ClosureContext.lookup($variable)';
   }
 
-  Expression assign(VariableDeclaration variable, Expression value) {
+  Expression assign(VariableDeclaration variable, Expression value,
+      {bool voidContext: false}) {
     var context = expression;
     for (var variables in variabless) {
       var index = variables.indexOf(variable);
       if (index != -1) {
-        return new MethodInvocation(
-            context,
-            new Name('[]='),
-            new Arguments(<Expression>[new IntLiteral(index), value]));
+        return IndexAccessor.make(context, new IntLiteral(index), null, null)
+            .buildAssignment(value, voidContext: voidContext);
       }
       context = new PropertyGet(context, new Name('parent'));
     }
