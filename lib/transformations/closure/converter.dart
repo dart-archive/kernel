@@ -11,6 +11,7 @@ import '../../ast.dart' show
     Arguments,
     Block,
     BlockExpression,
+    Catch,
     Class,
     Constructor,
     ConstructorInvocation,
@@ -78,9 +79,6 @@ import 'context.dart' show
 
 import 'info.dart' show
     ClosureInfo;
-
-import 'skip.dart' show
-    convertClosures;
 
 class ClosureConverter extends Transformer with DartTypeVisitor<DartType> {
   final CoreTypes coreTypes;
@@ -369,9 +367,6 @@ class ClosureConverter extends Transformer with DartTypeVisitor<DartType> {
   }
 
   TreeNode visitProcedure(Procedure node) {
-    // TODO(ahe): Delete this check, eventually all procedures should be
-    // converted.
-    if (!convertClosures(node)) return node;
     assert(_currentBlock == null);
     assert(_insertionIndex == 0);
     assert(context == null);
@@ -646,6 +641,34 @@ class ClosureConverter extends Transformer with DartTypeVisitor<DartType> {
       node.name = tearOffName;
     }
     return super.visitPropertyGet(node);
+  }
+
+  TreeNode visitCatch(Catch node) {
+    VariableDeclaration exception = node.exception;
+    VariableDeclaration stackTrace = node.stackTrace;
+    if (stackTrace != null && capturedVariables.contains(stackTrace)) {
+      Block block = node.body = ensureBlock(node.body);
+      block.parent = node;
+      node.stackTrace = new VariableDeclaration(null);
+      node.stackTrace.parent = node;
+      stackTrace.initializer = new VariableGet(node.stackTrace);
+      block.statements.insert(0, stackTrace);
+      stackTrace.parent = block;
+    }
+    if (exception != null && capturedVariables.contains(exception)) {
+      Block block = node.body = ensureBlock(node.body);
+      block.parent = node;
+      node.exception = new VariableDeclaration(null);
+      node.exception.parent = node;
+      exception.initializer = new VariableGet(node.exception);
+      block.statements.insert(0, exception);
+      exception.parent = block;
+    }
+    return super.visitCatch(node);
+  }
+
+  Block ensureBlock(Statement statement) {
+    return statement is Block ? statement : new Block(<Statement>[statement]);
   }
 
   /// Creates a closure that will invoke [procedure] and return an expression
