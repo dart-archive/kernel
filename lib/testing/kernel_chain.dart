@@ -85,10 +85,7 @@ class MatchExpectation extends Step<Program, Program, dynamic> {
 
   final bool updateExpectations;
 
-  const MatchExpectation(
-      this.suffix,
-      {this.updateExpectations: const bool.fromEnvironment("updateExpectations",
-          defaultValue: const bool.fromEnvironment("generateExpectations"))});
+  const MatchExpectation(this.suffix, {this.updateExpectations: true});
 
   String get name => "match expectations";
 

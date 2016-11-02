@@ -148,7 +148,7 @@ Future<TestContext> createContext(
 
   Uri packages = Uri.base.resolve(".packages");
   bool strongMode = false;
-  bool updateExpectations = environment["updateExpectations"] == "true";
+  bool updateExpectations = environment["updateExpectations"] != "false";
   return new TestContext(sdk, vm, packages, strongMode,
       createDartSdk(sdk, strongMode: strongMode), updateExpectations);
 }
