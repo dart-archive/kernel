@@ -102,7 +102,13 @@ class ClosureInfo extends RecursiveVisitor {
   visitProcedure(Procedure node) {
     beginMember(node, node.function);
     if (node.isInstanceMember && node.kind == ProcedureKind.Method) {
-      declaredInstanceMethodNames.add(node.name);
+      // Ignore the `length` method of [File] subclasses for now, as they
+      // will force us to rename the `length` getter (kernel issue #43).
+      // TODO(ahe): remove this condition.
+      if (node.name.name != "length" ||
+          node.parent.enclosingLibrary.importUri.toString() != "dart:io") {
+        declaredInstanceMethodNames.add(node.name);
+      }
     }
     super.visitProcedure(node);
     endMember();
