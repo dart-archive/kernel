@@ -105,8 +105,9 @@ class ClosureInfo extends RecursiveVisitor {
       // Ignore the `length` method of [File] subclasses for now, as they
       // will force us to rename the `length` getter (kernel issue #43).
       // TODO(ahe): remove this condition.
+      Class parent = node.parent;
       if (node.name.name != "length" ||
-          node.parent.enclosingLibrary.importUri.toString() != "dart:io") {
+          parent.enclosingLibrary.importUri.toString() != "dart:io") {
         declaredInstanceMethodNames.add(node.name);
       }
     }
