@@ -1,3 +1,10 @@
+Moved
+=====
+
+This has moved into the [Dart SDK repository](github.com/dart-lang/sdk).
+
+This repository is not kept up-to-date.
+
 Dart Kernel
 ===========
 **Dart Kernel** is a small high-level language derived from Dart.
